@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
 
@@ -23,6 +24,9 @@
 
       .gradient-bg {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      .hidden-class {
+        display: none;
       }
 
       .glass-effect {
@@ -160,6 +164,12 @@
 
       .offline-indicator.show {
         transform: translateY(0);
+      }
+
+      @media (max-width: 640px) {
+        .grid {
+          grid-template-columns: repeat(1, minmax(0, 1fr));
+        }
       }
     </style>
   </head>
@@ -456,11 +466,11 @@
                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               >
                 <option value="">Select Department</option>
-                <option value="engineering">Engineering</option>
-                <option value="marketing">Marketing</option>
-                <option value="hr">Human Resources</option>
-                <option value="finance">Finance</option>
-                <option value="operations">Operations</option>
+                <option value="Web Dev">Web Dev</option>
+                <option value="Marketing">Marketing</option>
+                <option value="Human Resources">Human Resources</option>
+                <option value="Designing">Designing</option>
+                <option value="Cyber Security">Cyber Security</option>
               </select>
               <div id="departmentError" class="error-message hidden"></div>
             </div>
@@ -794,7 +804,9 @@
                   class="hidden w-full rounded-lg max-w-full"
                 ></video>
                 <canvas id="qrCanvas" class="hidden"></canvas>
-                <div class="flex flex-col mt-5 sm:flex-row gap-2 justify-center">
+                <div
+                  class="flex flex-col mt-5 sm:flex-row gap-2 justify-center"
+                >
                   <button
                     onclick="startQRScan()"
                     class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -1002,6 +1014,7 @@
                 id="profileDepartment"
                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
+                <option value="">Select Department</option>
                 <option value="engineering">Engineering</option>
                 <option value="marketing">Marketing</option>
                 <option value="hr">Human Resources</option>
@@ -1576,7 +1589,7 @@
                 <div class="ml-4">
                   <p class="text-sm font-medium text-gray-600">Total Interns</p>
                   <p id="totalInterns" class="text-2xl font-bold text-gray-900">
-                    0
+                    17
                   </p>
                 </div>
               </div>
@@ -1811,7 +1824,7 @@
     <!-- Firebase SDK -->
     <script type="module">
       // Import Firebase modules
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
       import {
         getAuth,
         createUserWithEmailAndPassword,
@@ -1821,7 +1834,7 @@
         onAuthStateChanged,
         GoogleAuthProvider,
         signInWithPopup,
-      } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
       import {
         getFirestore,
         doc,
@@ -1836,8 +1849,9 @@
         updateDoc,
         serverTimestamp,
         getDocs,
-      } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-      import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-analytics.js";
+        documentId,
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+      import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
       import {
         getFunctions,
         httpsCallable,
@@ -1859,6 +1873,7 @@
       const auth = getAuth(app);
       const db = getFirestore(app);
       const analytics = getAnalytics(app);
+      const functions = getFunctions(app);
 
       // Initialize Google Auth Provider
       const googleProvider = new GoogleAuthProvider();
@@ -1917,14 +1932,29 @@
         }
       }
 
-      // Email notification system (simulated)
-      async function sendEmailNotification(to, subject, body) {
+      // Email notification system
+      async function sendEmailNotification(to, subject, body, type = "info") {
         try {
           const sendEmail = httpsCallable(functions, "sendEmail");
           const result = await sendEmail({ to, subject, body });
 
           if (result.data.success) {
             showNotification(`Email sent to ${to}`, "success");
+
+            // Log the email
+            const emailLog = JSON.parse(
+              localStorage.getItem("emailLog") || "[]"
+            );
+            emailLog.push({
+              to,
+              subject,
+              body,
+              type,
+              timestamp: Date.now(),
+              status: "sent",
+            });
+            localStorage.setItem("emailLog", JSON.stringify(emailLog));
+
             return { success: true, messageId: Date.now().toString() };
           } else {
             showNotification("Failed to send email", "error");
@@ -2225,6 +2255,11 @@
 
           showNotification("Profile completed successfully!", "success");
           closeProfileCompletion();
+          if (window.userRole === "intern") {
+            showInternDashboard();
+          } else {
+            showAdminDashboard();
+          }
         } catch (error) {
           handleFirebaseError(error);
         } finally {
@@ -2289,8 +2324,14 @@
 
           await addDoc(collection(db, "attendance"), attendanceData);
 
+          window.currentAttendanceSession = { checkInTime: Date.now() };
+          updateAttendanceButtons("checked-in");
+          updateCurrentStatus("checked-in", now.toLocaleTimeString());
+          startWorkingHoursTimer();
+          addRecentActivity("Checked in", now.toLocaleString());
+
+          sendPushNotification("Attendance Update", "Successfully checked in!");
           showNotification("Checked in successfully!", "success");
-          // ... update UI and notifications here
         } catch (error) {
           handleFirebaseError(error);
         } finally {
@@ -2342,16 +2383,31 @@
 
           const location = await getCurrentLocation();
 
+          // Calculate working hours
+          const checkInTime = attendanceData.checkInTime.toDate();
+          const workingHours = (now - checkInTime) / (1000 * 60 * 60);
+
           // Update checkout info
           await updateDoc(attendanceRef, {
             checkOutTime: serverTimestamp(),
             checkOutLocation: location,
             status: "checked-out",
+            workingHours: workingHours,
             updatedAt: serverTimestamp(),
           });
 
+          updateAttendanceButtons("checked-out");
+          updateCurrentStatus("checked-out", now.toLocaleTimeString());
+          updateWorkingHours(workingHours);
+          stopWorkingHoursTimer();
+          window.currentAttendanceSession = null;
+          addRecentActivity("Checked out", now.toLocaleString());
+
+          sendPushNotification(
+            "Attendance Update",
+            "Successfully checked out!"
+          );
           showNotification("Checked out successfully!", "success");
-          // ... update UI and notifications here
         } catch (error) {
           handleFirebaseError(error);
         } finally {
@@ -2362,8 +2418,8 @@
       // Location services
       // Company fixed location (example)
       const companyLocation = {
-        latitude: 3.86098, // replace with company lat
-        longitude: 11.498647, // replace with company lon
+        latitude: 3.860987,                                                                                               
+        longitude: 11.498647,
       };
 
       // Haversine formula to calculate distance in km
@@ -2389,6 +2445,7 @@
       async function checkStudentAccess() {
         const studentLocation = await getCurrentLocation();
         const locationMessage = document.getElementById("locationMessage");
+        const locationDistance = document.getElementById("locationDistance");
 
         if (!studentLocation.latitude || !studentLocation.longitude) {
           console.warn("Unable to fetch location:", studentLocation.error);
@@ -2404,11 +2461,19 @@
           companyLocation.longitude
         );
 
-        locationMessage.textContent = `You are ${distance.toFixed(
-          2
-        )} km away from company`;
+        if (locationMessage) {
+          locationMessage.textContent = `You are ${distance.toFixed(
+            2
+          )} km away from company`;
+        }
 
-        if (distance <= 1) {
+        if (locationDistance) {
+          locationDistance.textContent = `Accuracy: ${studentLocation.accuracy.toFixed(
+            1
+          )}m`;
+        }
+
+        if (distance <= 3) {
           return { access: true, reason: "Within safe boundary" };
         } else {
           return {
@@ -2441,7 +2506,7 @@
       }
       // Load intern dashboard data
       // Load intern dashboard data in real-time
-      function loadInternData() {
+      async function loadInternData() {
         if (!window.currentUser) return;
 
         const today = new Date().toDateString();
@@ -2453,30 +2518,37 @@
           where("date", "==", today)
         );
 
-        onSnapshot(attendanceQueryToday, (snapshot) => {
-          if (!snapshot.empty) {
-            const attendanceData = snapshot.docs[0].data();
-            if (attendanceData.status === "checked-in") {
-              window.currentAttendanceSession = {
-                checkInTime: attendanceData.checkInTime.toDate().getTime(),
-              };
-              updateAttendanceButtons("checked-in");
-              updateCurrentStatus(
-                "checked-in",
-                attendanceData.checkInTime.toDate().toLocaleTimeString()
-              );
-              startWorkingHoursTimer();
-            } else if (attendanceData.status === "checked-out") {
-              updateAttendanceButtons("checked-out");
-              updateCurrentStatus(
-                "checked-out",
-                attendanceData.checkOutTime.toDate().toLocaleTimeString()
-              );
-              stopWorkingHoursTimer();
-              window.currentAttendanceSession = null;
+        const unsubscribeToday = onSnapshot(
+          attendanceQueryToday,
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const attendanceData = snapshot.docs[0].data();
+              if (attendanceData.status === "checked-in") {
+                window.currentAttendanceSession = {
+                  checkInTime: attendanceData.checkInTime.toDate().getTime(),
+                };
+                updateAttendanceButtons("checked-in");
+                updateCurrentStatus(
+                  "checked-in",
+                  attendanceData.checkInTime.toDate().toLocaleTimeString()
+                );
+                startWorkingHoursTimer();
+              } else if (attendanceData.status === "checked-out") {
+                updateAttendanceButtons("checked-out");
+                updateCurrentStatus(
+                  "checked-out",
+                  attendanceData.checkOutTime.toDate().toLocaleTimeString()
+                );
+                stopWorkingHoursTimer();
+                window.currentAttendanceSession = null;
+              }
+            } else {
+              updateAttendanceButtons("not-checked-in");
+              updateCurrentStatus("not-checked-in", "--");
             }
           }
-        });
+        );
+        window.attendanceListeners.push(unsubscribeToday);
 
         // Load monthly stats in real-time
         loadMonthlyStats();
@@ -2500,7 +2572,7 @@
           where("createdAt", "<=", lastDay)
         );
 
-        onSnapshot(attendanceQuery, (snapshot) => {
+        const unsubscribeMonthly = onSnapshot(attendanceQuery, (snapshot) => {
           const attendanceData = snapshot.docs.map((doc) => doc.data());
 
           const totalDays = attendanceData.length;
@@ -2530,6 +2602,7 @@
             5
           )} days`;
         });
+        window.attendanceListeners.push(unsubscribeMonthly);
       }
 
       // Load recent activity
@@ -2542,7 +2615,7 @@
           orderBy("createdAt", "desc")
         );
 
-        onSnapshot(attendanceQuery, (snapshot) => {
+        const unsubscribeRecent = onSnapshot(attendanceQuery, (snapshot) => {
           const activityContainer = document.getElementById("recentActivity");
           activityContainer.innerHTML = "";
 
@@ -2581,10 +2654,11 @@
             activityContainer.appendChild(activity);
           });
         });
+        window.attendanceListeners.push(unsubscribeRecent);
       }
 
       // Load admin dashboard data
-      function loadAdminData() {
+      async function loadAdminData() {
         if (!window.currentUser || window.userRole !== "admin") return;
 
         // Track all unsubscribe functions to clean up listeners
@@ -2630,20 +2704,52 @@
             document.getElementById("currentlyWorking").textContent =
               currentlyWorking;
             document.getElementById("absentToday").textContent = absentToday;
+
+            loadInternsList(); // Refresh table on attendance change
           }
         );
         window.adminListeners.push(unsubscribeAttendance);
       }
 
       // Real-time listeners
-      function loadInternsList() {
+      async function loadInternsList() {
         const internsList = document.getElementById("internsList");
         if (!internsList) return;
 
-        const usersQuery = query(
-          collection(db, "users"),
-          where("role", "==", "intern")
-        );
+        const auth = window.firebaseAuth;
+        const db = window.firebaseDb;
+
+        const user = auth.currentUser;
+        if (!user) return console.log("No user logged in") && (internsList.innerHTML = "");
+
+        const tokenResult = await user.getIdTokenResult();
+        console.log(tokenResult)
+        if(!tokenResult) {
+          return internsList.innerHTML = `
+            <tr>
+              <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                <i class="fas fa-users text-2xl mb-2"></i>
+                <p>Access denied</p>
+              </td>
+            </tr>
+          `;
+        }
+        
+        const isAdmin = tokenResult.claims.role === "admin";
+
+        let usersQuery;
+        if (isAdmin) {
+          usersQuery = query(
+            collection(db, "users"),
+            where("role", "==", "intern")
+          );
+        } else {
+          usersQuery = query(
+            collection(db, "users"),
+            where("role", "==", "intern"),
+            where(documentId(), "==", user.uid)
+          );
+        }
 
         const unsubscribe = onSnapshot(usersQuery, async (snapshot) => {
           internsList.innerHTML = "";
@@ -2714,17 +2820,17 @@
               ${userData.firstName.charAt(0)}${userData.lastName.charAt(0)}
             </div>
             <div class="ml-4">
-              <div class="text-sm font-medium text-gray-900">${
-                userData.firstName
-              } ${userData.lastName}</div>
+              <div class="text-sm font-medium text-gray-900">
+                ${userData.firstName} ${userData.lastName}
+              </div>
               <div class="text-sm text-gray-500">${userData.email}</div>
             </div>
           </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
-          <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">${
-            userData.department
-          }</span>
+          <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+            ${userData.department}
+          </span>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
           <span class="flex items-center">
@@ -2736,8 +2842,12 @@
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${checkOut}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${hours}</td>
         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-          <button class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
-          <button class="text-red-600 hover:text-red-900">Remove</button>
+          ${
+            isAdmin
+              ? `<button class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
+          <button class="text-red-600 hover:text-red-900">Remove</button>`
+              : ""
+          }
         </td>
       `;
             internsList.appendChild(row);
@@ -2959,6 +3069,80 @@
         }
       }
 
+      async function sendNotifications() {
+        if (!window.currentUser || window.userRole !== "admin") {
+          showNotification("Access denied", "error");
+          return;
+        }
+
+        try {
+          showLoading();
+
+          // Get all interns
+          const usersQuery = query(
+            collection(window.firebaseDb, "users"),
+            where("role", "==", "intern")
+          );
+          const usersDocs = await getDocs(usersQuery);
+
+          if (usersDocs.empty) {
+            showNotification("No interns found to notify", "warning");
+            return;
+          }
+
+          const today = new Date().toDateString();
+          const currentTime = new Date().toLocaleTimeString();
+
+          // Check who hasn't checked in today
+          const attendanceQuery = query(
+            collection(window.firebaseDb, "attendance"),
+            where("date", "==", today)
+          );
+          const attendanceDocs = await getDocs(attendanceQuery);
+          const checkedInUserIds = attendanceDocs.docs.map(
+            (doc) => doc.data().userId
+          );
+
+          let notificationsSent = 0;
+
+          // Send notifications to interns who haven't checked in
+          for (const userDoc of usersDocs.docs) {
+            const userData = userDoc.data();
+
+            if (!checkedInUserIds.includes(userDoc.id)) {
+              // Send email reminder
+              await sendEmailNotification(
+                userData.email,
+                "Attendance Reminder - AttendanceHub",
+                `Hello ${userData.firstName},\n\nThis is a friendly reminder to check in for today (${today}).\n\nCurrent time: ${currentTime}\n\nPlease log in to AttendanceHub and mark your attendance.\n\nBest regards,\nAttendanceHub Admin Team`,
+                "reminder"
+              );
+
+              notificationsSent++;
+
+              // Small delay to avoid overwhelming the system
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+          }
+
+          // Send summary notification to admin
+          sendPushNotification(
+            "Notifications Sent",
+            `Sent ${notificationsSent} attendance reminders to interns who haven't checked in today.`
+          );
+
+          showNotification(
+            `Sent ${notificationsSent} attendance reminders successfully!`,
+            "success"
+          );
+        } catch (error) {
+          console.error("Error sending notifications:", error);
+          showNotification("Error sending notifications", "error");
+        } finally {
+          hideLoading();
+        }
+      }
+
       // Make functions available globally
       window.registerUser = registerUser;
       window.loginUser = loginUser;
@@ -2976,6 +3160,7 @@
       window.initializePushNotifications = initializePushNotifications;
       window.sendPushNotification = sendPushNotification;
       window.sendEmailNotification = sendEmailNotification;
+      window.sendNotifications = sendNotifications;
     </script>
 
     <script>
@@ -3034,6 +3219,7 @@
         generateCalendar();
         updateTime();
         setInterval(updateTime, 1000);
+        window.loadInternData();
         window.setupRealTimeListeners();
       }
 
@@ -3041,6 +3227,7 @@
         hideAllPages();
         document.getElementById("adminDashboard").classList.remove("hidden");
         generateDailyQR();
+        window.loadAdminData();
         window.setupRealTimeListeners();
       }
 
@@ -3584,80 +3771,6 @@
         window.exportAttendanceData();
       }
 
-      async function sendNotifications() {
-        if (!window.currentUser || window.userRole !== "admin") {
-          showNotification("Access denied", "error");
-          return;
-        }
-
-        try {
-          showLoading();
-
-          // Get all interns
-          const usersQuery = query(
-            collection(window.firebaseDb, "users"),
-            where("role", "==", "intern")
-          );
-          const usersDocs = await getDocs(usersQuery);
-
-          if (usersDocs.empty) {
-            showNotification("No interns found to notify", "warning");
-            return;
-          }
-
-          const today = new Date().toDateString();
-          const currentTime = new Date().toLocaleTimeString();
-
-          // Check who hasn't checked in today
-          const attendanceQuery = query(
-            collection(window.firebaseDb, "attendance"),
-            where("date", "==", today)
-          );
-          const attendanceDocs = await getDocs(attendanceQuery);
-          const checkedInUserIds = attendanceDocs.docs.map(
-            (doc) => doc.data().userId
-          );
-
-          let notificationsSent = 0;
-
-          // Send notifications to interns who haven't checked in
-          for (const userDoc of usersDocs.docs) {
-            const userData = userDoc.data();
-
-            if (!checkedInUserIds.includes(userDoc.id)) {
-              // Send email reminder
-              await sendEmailNotification(
-                userData.email,
-                "Attendance Reminder - AttendanceHub",
-                `Hello ${userData.firstName},\n\nThis is a friendly reminder to check in for today (${today}).\n\nCurrent time: ${currentTime}\n\nPlease log in to AttendanceHub and mark your attendance.\n\nBest regards,\nAttendanceHub Admin Team`,
-                "reminder"
-              );
-
-              notificationsSent++;
-
-              // Small delay to avoid overwhelming the system
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            }
-          }
-
-          // Send summary notification to admin
-          sendPushNotification(
-            "Notifications Sent",
-            `Sent ${notificationsSent} attendance reminders to interns who haven't checked in today.`
-          );
-
-          showNotification(
-            `Sent ${notificationsSent} attendance reminders successfully!`,
-            "success"
-          );
-        } catch (error) {
-          console.error("Error sending notifications:", error);
-          showNotification("Error sending notifications", "error");
-        } finally {
-          hideLoading();
-        }
-      }
-
       function viewReports() {
         showReports();
       }
@@ -3749,6 +3862,7 @@
         department.value = window.currentUser.department || "";
 
         modal.classList.remove("hidden");
+
         closeAllMenus();
       }
 
@@ -4193,49 +4307,40 @@
 
       // Search and filter functionality for intern management
       document
-        .getElementById("searchInternsManagement")
+        .getElementById("searchInterns")
         ?.addEventListener("input", filterInternsManagement);
       document
-        .getElementById("filterDepartmentManagement")
-        ?.addEventListener("change", filterInternsManagement);
-      document
-        .getElementById("filterStatusManagement")
+        .getElementById("filterDepartment")
         ?.addEventListener("change", filterInternsManagement);
 
       function filterInternsManagement() {
         const searchTerm =
-          document
-            .getElementById("searchInternsManagement")
-            ?.value.toLowerCase() || "";
+          document.getElementById("searchInterns").value.toLowerCase() || "";
         const departmentFilter =
-          document.getElementById("filterDepartmentManagement")?.value || "";
-        const statusFilter =
-          document.getElementById("filterStatusManagement")?.value || "";
+          document.getElementById("filterDepartment").value || "";
 
-        const rows = document.querySelectorAll("#internsManagementList tr");
+        const rows = document.querySelectorAll("#internsList tr");
 
         rows.forEach((row) => {
           if (row.cells.length < 7) return; // Skip empty rows
 
-          const name = row.cells[1]?.textContent.toLowerCase() || "";
+          const name =
+            row.cells[0]
+              ?.querySelector(".text-gray-900")
+              ?.textContent.toLowerCase() || "";
           const email =
-            row.cells[1]
+            row.cells[0]
               ?.querySelector(".text-gray-500")
               ?.textContent.toLowerCase() || "";
-          const department = row.cells[3]?.textContent.toLowerCase() || "";
-          const status = row.cells[4]?.textContent.toLowerCase() || "";
+          const department = row.cells[1]?.textContent.toLowerCase() || "";
 
           const matchesSearch =
             name.includes(searchTerm) || email.includes(searchTerm);
           const matchesDepartment =
             !departmentFilter ||
             department.includes(departmentFilter.toLowerCase());
-          const matchesStatus =
-            !statusFilter ||
-            (statusFilter === "active" && status.includes("active")) ||
-            (statusFilter === "suspended" && status.includes("suspended"));
 
-          if (matchesSearch && matchesDepartment && matchesStatus) {
+          if (matchesSearch && matchesDepartment) {
             row.style.display = "";
           } else {
             row.style.display = "none";
