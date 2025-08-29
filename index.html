@@ -169,6 +169,13 @@
       @media (max-width: 640px) {
         .grid {
           grid-template-columns: repeat(1, minmax(0, 1fr));
+
+        }
+        .qrgen{
+          display: none;
+        }
+        .sta-msg{
+          display:none
         }
       }
     </style>
@@ -630,7 +637,7 @@
                 </h1>
                 <div class="ml-4 flex items-center">
                   <span class="status-indicator status-online"></span>
-                  <span class="text-sm text-gray-600"
+                  <span class="sta-msg text-sm text-gray-600"
                     >Real-time sync active</span
                   >
                 </div>
@@ -1500,7 +1507,7 @@
       </div>
 
       <!-- Admin Dashboard -->
-      <div id="adminDashboard" class="hidden min-h-screen bg-gray-50">
+      <div id="adminDashboard" class="hidden min-h-screen bg-gray-50 overflow-x-hidden">
         <!-- Admin Header -->
         <header class="bg-white shadow-sm border-b">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1512,16 +1519,16 @@
                 </h1>
                 <div class="ml-4 flex items-center">
                   <span class="status-indicator status-online"></span>
-                  <span class="text-sm text-gray-600"
+                  <span class="sta-msg text-sm text-gray-600"
                     >Real-time sync active</span
                   >
                 </div>
               </div>
 
               <div class="flex items-center space-x-4">
-                <button
+                <button 
                   onclick="generateDailyQR()"
-                  class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  class="qrgen bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <i class="fas fa-qrcode mr-2"></i>Generate QR
                 </button>
@@ -1732,24 +1739,24 @@
           <!-- Intern List -->
           <div class="bg-white rounded-xl shadow-sm border">
             <div class="p-6 border-b">
-              <div class="flex justify-between items-center">
+              <div class="block md:block lg:flex  justify-between items-center flex-wrap gap-4">
                 <h3
-                  class="text-lg font-semibold text-gray-900 flex items-center"
+                  class="py-3 text-lg font-semibold text-gray-900 flex items-center"
                 >
                   <i class="fas fa-users text-indigo-600 mr-2"></i>
                   Intern Management
                 </h3>
 
-                <div class="flex space-x-2">
+                <div class="block md:block lg:flex items-center flex-wrap gap-4">
                   <input
                     type="text"
                     id="searchInterns"
                     placeholder="Search interns..."
-                    class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    class="gap-4 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <select
                     id="filterDepartment"
-                    class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    class="gap-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="">All Departments</option>
                     <option value="engineering">Engineering</option>
