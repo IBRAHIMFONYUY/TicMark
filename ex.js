@@ -1,1275 +1,1307 @@
-
-// Import Firebase modules
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-analytics.js";
-import { 
-    getAuth, 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
-    signInWithPopup, 
-    GoogleAuthProvider, 
-    sendPasswordResetEmail,
-    onAuthStateChanged,
-    signOut,
-    sendEmailVerification
-} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { 
-    getFirestore, 
-    doc, 
-    setDoc, 
-    getDoc, 
-    collection, 
-    addDoc, 
-    query, 
-    where, 
-    orderBy, 
-    limit, 
-    getDocs,
-    updateDoc,
-    serverTimestamp,
-    onSnapshot,
-    Timestamp
-} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-
-// Firebase configuration
-const firebaseConfig = {
-    apiKey: "AIzaSyClsVvQhA7JGNdtgTuxKVhLEkTPzg6iEr0",
-    authDomain: "ticmark-485c6.firebaseapp.com",
-    projectId: "ticmark-485c6",
-    storageBucket: "ticmark-485c6.appspot.com",
-    messagingSenderId: "403974173327",
-    appId: "1:403974173327:web:e8acedc468981a4be976fa",
-    measurementId: "G-QBL5LCF0KG"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const googleProvider = new GoogleAuthProvider();
-
-// Global state
-window.currentUser = null;
-window.userRole = null;
-window.isLocationVerified = false;
-window.qrStream = null;
-window.auth = auth;
-window.db = db;
-window.companyCoordinates = { latitude: 40.7128, longitude: -74.0060 }; // Company coordinates
-
-// Auth state observer
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        window.currentUser = user;
-        
-        // Get user data from Firestore
-        try {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-            if (userDoc.exists()) {
-                const userData = userDoc.data();
-                window.userRole = userData.role;
-                
-                // Update UI with user info
-                updateUserUI(user, userData);
-                
-                // Show appropriate dashboard
-                if (userData.role === 'admin') {
-                    showAdminDashboard();
-                    loadAdminData();
-                } else {
-                    showInternDashboard();
-                    loadInternData(user.uid);
-                }
-            } else {
-                // New user, show profile completion
-                showSignup();
-            }
-        } catch (error) {
-            console.error('Error fetching user data:', error);
-            showNotification('Error loading user data. Please try again.', 'error');
-            logout();
-        }
-    } else {
-        window.currentUser = null;
-        window.userRole = null;
-        showLanding();
-    }
-});
-
-// Authentication functions
-window.handleGoogleSignIn = async () => {
-    try {
-        showLoading();
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
-        
-        // Check if user exists in Firestore
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        
-        if (!userDoc.exists()) {
-            // New user, create profile
-            await setDoc(doc(db, 'users', user.uid), {
-                email: user.email,
-                displayName: user.displayName,
-                photoURL: user.photoURL,
-                role: window.userRole || 'intern',
-                createdAt: serverTimestamp(),
-                isActive: true
-            });
-        }
-        
-        hideLoading();
-        showNotification('Signed in successfully!', 'success');
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Google sign-in error:', error);
-        showNotification('Sign-in failed: ' + error.message, 'error');
-    }
-};
-
-window.handleEmailSignIn = async (email, password) => {
-    try {
-        showLoading();
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        hideLoading();
-        showNotification('Signed in successfully!', 'success');
-    } catch (error) {
-        hideLoading();
-        console.error('Email sign-in error:', error);
-        showNotification('Sign-in failed: ' + error.message, 'error');
-    }
-};
-
-window.handleEmailSignUp = async (email, password, userData) => {
-    try {
-        showLoading();
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        
-        // Send email verification
-        await sendEmailVerification(user);
-        
-        // Create user profile in Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-            ...userData,
-            email: email,
-            role: userData.role || 'intern',
-            createdAt: serverTimestamp(),
-            isActive: true,
-            emailVerified: false
-        });
-        
-        hideLoading();
-        showNotification('Account created! Please check your email for verification.', 'success');
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Email sign-up error:', error);
-        showNotification('Sign-up failed: ' + error.message, 'error');
-    }
-};
-
-window.handlePasswordReset = async (email) => {
-    try {
-        showLoading();
-        await sendPasswordResetEmail(auth, email);
-        hideLoading();
-        showNotification('Password reset email sent!', 'success');
-    } catch (error) {
-        hideLoading();
-        console.error('Password reset error:', error);
-        showNotification('Reset failed: ' + error.message, 'error');
-    }
-};
-
-window.logout = async () => {
-    try {
-        await signOut(auth);
-        showNotification('Logged out successfully', 'info');
-    } catch (error) {
-        console.error('Logout error:', error);
-        showNotification('Logout failed: ' + error.message, 'error');
-    }
-};
-
-// Email notification service
-window.sendEmailNotification = async (to, subject, body, type = 'attendance') => {
-    try {
-        // Using EmailJS for client-side email sending
-        const emailData = {
-            to_email: to,
-            subject: subject,
-            message: body,
-            from_name: 'AttendanceHub System',
-            reply_to: 'noreply@attendancehub.com'
-        };
-        
-        // Store notification in Firebase for tracking
-        await addDoc(collection(db, 'notifications'), {
-            type: type,
-            recipient: to,
-            subject: subject,
-            body: body,
-            timestamp: serverTimestamp(),
-            status: 'sent'
-        });
-        
-        // Simulate email sending (replace with actual email service)
-        console.log('Email notification sent:', emailData);
-        return true;
-        
-    } catch (error) {
-        console.error('Email notification error:', error);
-        return false;
-    }
-};
-
-// Check-in/Check-out functions
-window.recordAttendance = async (type, action, data = {}) => {
-    if (!window.currentUser) {
-        showNotification('Please log in first', 'error');
-        return false;
-    }
-    
-    try {
-        showLoading();
-        
-        // Get current user data
-        const userDoc = await getDoc(doc(db, 'users', window.currentUser.uid));
-        const userData = userDoc.data();
-        
-        const now = new Date();
-        const today = now.toDateString();
-        const timeString = now.toLocaleTimeString();
-        
-        const attendanceData = {
-            userId: window.currentUser.uid,
-            userEmail: window.currentUser.email,
-            userName: userData.displayName || window.currentUser.displayName,
-            employeeId: userData.employeeId,
-            department: userData.department,
-            type: type, // 'qr' or 'manual'
-            action: action, // 'checkin' or 'checkout'
-            timestamp: serverTimestamp(),
-            date: today,
-            time: timeString,
-            location: data.location || null,
-            qrCode: data.qrCode || null,
-            status: action === 'checkin' ? 'present' : 'checked_out',
-            isLate: action === 'checkin' && (now.getHours() > 9 || (now.getHours() === 9 && now.getMinutes() > 30))
-        };
-        
-        // Check if already checked in/out today for this action
-        const attendanceQuery = query(
-            collection(db, 'attendance'),
-            where('userId', '==', window.currentUser.uid),
-            where('date', '==', today),
-            where('action', '==', action)
-        );
-        
-        const existingAttendance = await getDocs(attendanceQuery);
-        
-        if (!existingAttendance.empty) {
-            hideLoading();
-            showNotification(`Already ${action === 'checkin' ? 'checked in' : 'checked out'} today!`, 'warning');
-            return false;
-        }
-        
-        // For checkout, verify that user checked in first
-        if (action === 'checkout') {
-            const checkInQuery = query(
-                collection(db, 'attendance'),
-                where('userId', '==', window.currentUser.uid),
-                where('date', '==', today),
-                where('action', '==', 'checkin')
-            );
-            
-            const checkInRecord = await getDocs(checkInQuery);
-            
-            if (checkInRecord.empty) {
-                hideLoading();
-                showNotification('You must check in before checking out!', 'warning');
-                return false;
-            }
-        }
-        
-        // Add attendance record
-        const docRef = await addDoc(collection(db, 'attendance'), attendanceData);
-        
-        // Send email notification
-        const emailSubject = `Attendance ${action === 'checkin' ? 'Check-in' : 'Check-out'} Confirmation - ${today}`;
-        const emailBody = `
-            Dear ${userData.displayName || 'User'},
-            
-            Your ${action === 'checkin' ? 'check-in' : 'check-out'} has been successfully recorded:
-            
-            Date: ${today}
-            Time: ${timeString}
-            Method: ${type === 'qr' ? 'QR Code Scan' : `Manual ${action === 'checkin' ? 'Check-in' : 'Check-out'}`}
-            Status: ${attendanceData.isLate ? 'Late' : 'On Time'}
-            Location: ${data.location ? 'Verified' : 'Not Available'}
-            
-            Thank you for using AttendanceHub!
-            
-            Best regards,
-            AttendanceHub Team
-        `;
-        
-        await sendEmailNotification(window.currentUser.email, emailSubject, emailBody);
-        
-        // Add to user's notification queue
-        await addDoc(collection(db, 'userNotifications'), {
-            userId: window.currentUser.uid,
-            type: `attendance_${action}_success`,
-            title: `${action === 'checkin' ? 'Check-in' : 'Check-out'} Recorded`,
-            message: `Successfully ${action === 'checkin' ? 'checked in' : 'checked out'} at ${timeString}`,
-            timestamp: serverTimestamp(),
-            read: false,
-            attendanceId: docRef.id
-        });
-        
-        hideLoading();
-        showNotification(`${action === 'checkin' ? 'Check-in' : 'Check-out'} recorded successfully! Email confirmation sent.`, 'success');
-        
-        // Update UI
-        updateAttendanceButtons(action);
-        loadInternData(window.currentUser.uid);
-        updateNotificationBadge();
-        
-        // Show celebration animation for check-in
-        if (action === 'checkin') {
-            showAttendanceSuccess();
-        }
-        
-        return true;
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Attendance recording error:', error);
-        showNotification(`Failed to record ${action === 'checkin' ? 'check-in' : 'check-out'}: ${error.message}`, 'error');
-        return false;
-    }
-};
-
-// Data loading functions
-window.loadInternData = async (userId) => {
-    try {
-        // Load attendance stats
-        const attendanceQuery = query(
-            collection(db, 'attendance'),
-            where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
-            limit(30)
-        );
-        
-        const attendanceSnapshot = await getDocs(attendanceQuery);
-        const attendanceRecords = attendanceSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        
-        // Update stats
-        updateInternStats(attendanceRecords);
-        updateRecentActivity(attendanceRecords);
-        updateAttendanceCalendar(attendanceRecords);
-        
-    } catch (error) {
-        console.error('Error loading intern data:', error);
-        showNotification('Error loading attendance data', 'error');
-    }
-};
-
-window.loadAdminData = async () => {
-    try {
-        showLoading();
-        
-        // Load all users with real-time updates
-        const usersQuery = query(collection(db, 'users'), where('role', '==', 'intern'));
-        
-        // Set up real-time listener for users
-        onSnapshot(usersQuery, (usersSnapshot) => {
-            const users = usersSnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            
-            // Load today's attendance with real-time updates
-            const today = new Date().toDateString();
-            const todayAttendanceQuery = query(
-                collection(db, 'attendance'),
-                where('date', '==', today)
-            );
-            
-            onSnapshot(todayAttendanceQuery, (attendanceSnapshot) => {
-                const todayAttendance = attendanceSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                
-                // Update admin stats and UI
-                updateAdminStats(users, todayAttendance);
-                updateInternsList(users, todayAttendance);
-                updateAdminNotifications(users, todayAttendance);
-                hideLoading();
-            }, (error) => {
-                console.error('Error loading attendance data:', error);
-                hideLoading();
-                showNotification('Error loading attendance data', 'error');
-            });
-        }, (error) => {
-            console.error('Error loading user data:', error);
-            hideLoading();
-            showNotification('Error loading user data', 'error');
-        });
-        
-        // Load all attendance data for analytics
-        const allAttendanceQuery = query(
-            collection(db, 'attendance'),
-            orderBy('timestamp', 'desc'),
-            limit(100)
-        );
-        
-        const allAttendanceSnapshot = await getDocs(allAttendanceQuery);
-        const allAttendance = allAttendanceSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        
-        // Generate admin analytics
-        generateAdminAnalytics(allAttendance);
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error loading admin data:', error);
-        showNotification('Failed to load admin data: ' + error.message, 'error');
-    }
-};
-
-// Enhanced admin functions
-window.addNewIntern = async (internData) => {
-    try {
-        showLoading();
-        
-        // Create user account
-        const userCredential = await createUserWithEmailAndPassword(auth, internData.email, internData.tempPassword);
-        const user = userCredential.user;
-        
-        // Add user data to Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-            ...internData,
-            role: 'intern',
-            createdAt: serverTimestamp(),
-            isActive: true,
-            emailVerified: false,
-            createdBy: window.currentUser.uid
-        });
-        
-        // Send welcome email
-        const welcomeSubject = 'Welcome to AttendanceHub!';
-        const welcomeBody = `
-            Dear ${internData.displayName},
-            
-            Welcome to AttendanceHub! Your account has been created successfully.
-            
-            Login Details:
-            Email: ${internData.email}
-            Temporary Password: ${internData.tempPassword}
-            
-            Please log in and change your password immediately.
-            
-            Best regards,
-            AttendanceHub Admin Team
-        `;
-        
-        await sendEmailNotification(internData.email, welcomeSubject, welcomeBody, 'welcome');
-        
-        hideLoading();
-        showNotification('Intern added successfully! Welcome email sent.', 'success');
-        loadAdminData(); // Refresh data
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error adding intern:', error);
-        showNotification('Failed to add intern: ' + error.message, 'error');
-    }
-};
-
-window.exportAttendanceData = async (dateRange = 'month') => {
-    try {
-        showLoading();
-        
-        const now = new Date();
-        let startDate;
-        
-        switch (dateRange) {
-            case 'week':
-                startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                break;
-            case 'month':
-                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                break;
-            case 'year':
-                startDate = new Date(now.getFullYear(), 0, 1);
-                break;
-            default:
-                startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        }
-        
-        // Query attendance data
-        const attendanceQuery = query(
-            collection(db, 'attendance'),
-            where('timestamp', '>=', startDate),
-            orderBy('timestamp', 'desc')
-        );
-        
-        const attendanceSnapshot = await getDocs(attendanceQuery);
-        const attendanceData = attendanceSnapshot.docs.map(doc => doc.data());
-        
-        // Convert to CSV
-        const csvData = convertToCSV(attendanceData);
-        
-        // Download CSV file
-        const blob = new Blob([csvData], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `attendance-report-${dateRange}-${now.toISOString().split('T')[0]}.csv`;
-        link.click();
-        
-        // Store export record
-        await addDoc(collection(db, 'exports'), {
-            type: 'attendance',
-            dateRange: dateRange,
-            exportedBy: window.currentUser.uid,
-            timestamp: serverTimestamp(),
-            recordCount: attendanceData.length
-        });
-        
-        hideLoading();
-        showNotification(`Attendance report exported successfully! (${attendanceData.length} records)`, 'success');
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Export error:', error);
-        showNotification('Failed to export data: ' + error.message, 'error');
-    }
-};
-
-window.sendBulkNotifications = async (message, targetGroup = 'all') => {
-    try {
-        showLoading();
-        
-        // Get target users
-        let usersQuery;
-        if (targetGroup === 'all') {
-            usersQuery = query(collection(db, 'users'), where('role', '==', 'intern'));
-        } else {
-            usersQuery = query(
-                collection(db, 'users'), 
-                where('role', '==', 'intern'),
-                where('department', '==', targetGroup)
-            );
-        }
-        
-        const usersSnapshot = await getDocs(usersQuery);
-        const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Send notifications to each user
-        const notificationPromises = users.map(async (user) => {
-            // Email notification
-            await sendEmailNotification(
-                user.email,
-                'Important Notice from AttendanceHub',
-                message,
-                'announcement'
-            );
-            
-            // In-app notification
-            await addDoc(collection(db, 'userNotifications'), {
-                userId: user.id,
-                type: 'announcement',
-                title: 'Important Notice',
-                message: message,
-                timestamp: serverTimestamp(),
-                read: false,
-                sentBy: window.currentUser.uid
-            });
-        });
-        
-        await Promise.all(notificationPromises);
-        
-        // Log bulk notification
-        await addDoc(collection(db, 'bulkNotifications'), {
-            message: message,
-            targetGroup: targetGroup,
-            recipientCount: users.length,
-            sentBy: window.currentUser.uid,
-            timestamp: serverTimestamp()
-        });
-        
-        hideLoading();
-        showNotification(`Notifications sent to ${users.length} interns successfully!`, 'success');
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Bulk notification error:', error);
-        showNotification('Failed to send notifications: ' + error.message, 'error');
-    }
-};
-
-// QR Code functions
-window.generateDailyQR = async () => {
-    try {
-        const today = new Date();
-        const qrData = {
-            type: 'attendance',
-            date: today.toDateString(),
-            timestamp: today.getTime(),
-            code: Math.random().toString(36).substr(2, 9)
-        };
-        
-        // Store QR code in Firestore
-        await setDoc(doc(db, 'qrCodes', today.toDateString()), qrData);
-        
-        const canvas = document.getElementById('qrCodeCanvas');
-        if (canvas) {
-            QRCode.toCanvas(canvas, JSON.stringify(qrData), {
-                width: 200,
-                margin: 2,
-                color: {
-                    dark: '#000000',
-                    light: '#FFFFFF'
-                }
-            });
-        }
-        
-        showNotification('Daily QR code generated successfully!', 'success');
-        
-    } catch (error) {
-        console.error('QR generation error:', error);
-        showNotification('Failed to generate QR code: ' + error.message, 'error');
-    }
-};
-
-// Notification system
-window.loadUserNotifications = async (userId) => {
-    try {
-        const notificationsQuery = query(
-            collection(db, 'userNotifications'),
-            where('userId', '==', userId),
-            where('read', '==', false),
-            orderBy('timestamp', 'desc'),
-            limit(10)
-        );
-        
-        onSnapshot(notificationsQuery, (snapshot) => {
-            const notifications = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            
-            updateNotificationBadge(notifications.length);
-            updateNotificationDropdown(notifications);
-        });
-        
-    } catch (error) {
-        console.error('Error loading notifications:', error);
-    }
-};
-
-window.updateNotificationBadge = (count = 0) => {
-    const badge = document.getElementById('notificationBadge');
-    if (badge) {
-        if (count > 0) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.classList.remove('hidden');
-            
-            // Add pulse animation for new notifications
-            badge.classList.add('animate-pulse');
-            setTimeout(() => badge.classList.remove('animate-pulse'), 3000);
-        } else {
-            badge.classList.add('hidden');
-        }
-    }
-};
-
-window.updateNotificationDropdown = (notifications) => {
-    // This would update a notification dropdown if it exists
-    console.log('New notifications:', notifications);
-};
-
-window.markNotificationAsRead = async (notificationId) => {
-    try {
-        await updateDoc(doc(db, 'userNotifications', notificationId), {
-            read: true,
-            readAt: serverTimestamp()
-        });
-    } catch (error) {
-        console.error('Error marking notification as read:', error);
-    }
-};
-
-// UI update functions
-window.updateUserUI = (user, userData) => {
-    const userName = document.getElementById('userName');
-    const userAvatar = document.getElementById('userAvatar');
-    const adminName = document.getElementById('adminName');
-    const adminAvatar = document.getElementById('adminAvatar');
-    
-    const displayName = userData.displayName || user.displayName || user.email.split('@')[0];
-    const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase();
-    
-    if (userName) userName.textContent = displayName;
-    if (userAvatar) userAvatar.textContent = initials;
-    if (adminName) adminName.textContent = displayName;
-    if (adminAvatar) adminAvatar.textContent = initials;
-    
-    // Load user notifications
-    loadUserNotifications(user.uid);
-};
-
-window.showAttendanceSuccess = () => {
-    // Create celebration animation
-    const celebration = document.createElement('div');
-    celebration.className = 'fixed inset-0 pointer-events-none z-50 flex items-center justify-center';
-    celebration.innerHTML = `
-        <div class="bg-green-500 text-white px-8 py-4 rounded-full shadow-2xl transform scale-0 animate-bounce">
-            <i class="fas fa-check-circle text-3xl mr-3"></i>
-            <span class="text-xl font-bold">Attendance Recorded!</span>
-        </div>
-    `;
-    
-    document.body.appendChild(celebration);
-    
-    // Animate in
-    setTimeout(() => {
-        celebration.firstElementChild.classList.remove('scale-0');
-        celebration.firstElementChild.classList.add('scale-100');
-    }, 100);
-    
-    // Remove after animation
-    setTimeout(() => {
-        celebration.remove();
-    }, 3000);
-    
-    // Add confetti effect
-    createConfetti();
-};
-
-window.createConfetti = () => {
-    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7'];
-    
-    for (let i = 0; i < 50; i++) {
-        const confetti = document.createElement('div');
-        confetti.className = 'fixed pointer-events-none z-40';
-        confetti.style.cssText = `
-            width: 10px;
-            height: 10px;
-            background: ${colors[Math.floor(Math.random() * colors.length)]};
-            left: ${Math.random() * 100}vw;
-            top: -10px;
-            border-radius: 50%;
-            animation: confetti-fall ${2 + Math.random() * 3}s linear forwards;
-        `;
-        
-        document.body.appendChild(confetti);
-        
-        setTimeout(() => confetti.remove(), 5000);
-    }
-};
-
-// Enhanced admin UI functions
-window.updateAdminStats = (users, todayAttendance) => {
-    const totalInterns = users.length;
-    const presentToday = todayAttendance.filter(a => a.action === 'checkin').length;
-    const checkedOutToday = todayAttendance.filter(a => a.action === 'checkout').length;
-    const absentToday = totalInterns - presentToday;
-    const lateToday = todayAttendance.filter(a => a.isLate).length;
-    
-    // Update with animation
-    animateCounter('totalInterns', totalInterns);
-    animateCounter('presentToday', presentToday);
-    animateCounter('absentToday', absentToday);
-    animateCounter('lateToday', lateToday);
-    
-    // Update progress indicators
-    updateAttendanceProgress(presentToday, totalInterns);
-};
-
-window.animateCounter = (elementId, targetValue) => {
-    const element = document.getElementById(elementId);
-    if (!element) return;
-    
-    const startValue = parseInt(element.textContent) || 0;
-    const duration = 1000;
-    const startTime = performance.now();
-    
-    function updateCounter(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        
-        const currentValue = Math.floor(startValue + (targetValue - startValue) * progress);
-        element.textContent = currentValue;
-        
-        if (progress < 1) {
-            requestAnimationFrame(updateCounter);
-        }
-    }
-    
-    requestAnimationFrame(updateCounter);
-};
-
-window.updateAttendanceProgress = (present, total) => {
-    const percentage = total > 0 ? (present / total) * 100 : 0;
-    
-    // Create or update progress bar
-    let progressBar = document.getElementById('attendanceProgress');
-    if (!progressBar) {
-        const statsContainer = document.querySelector('#adminDashboard .grid');
-        if (statsContainer) {
-            const progressContainer = document.createElement('div');
-            progressContainer.className = 'col-span-full bg-white rounded-xl shadow-sm p-6 border mt-4';
-            progressContainer.innerHTML = `
-                <h4 class="text-sm font-medium text-gray-600 mb-2">Today's Attendance Rate</h4>
-                <div class="w-full bg-gray-200 rounded-full h-3">
-                    <div id="attendanceProgress" class="bg-gradient-to-r from-green-400 to-green-600 h-3 rounded-full transition-all duration-1000" style="width: 0%"></div>
-                </div>
-                <p class="text-sm text-gray-500 mt-2">${present} out of ${total} interns present (${percentage.toFixed(1)}%)</p>
-            `;
-            statsContainer.appendChild(progressContainer);
-            progressBar = document.getElementById('attendanceProgress');
-        }
-    }
-    
-    if (progressBar) {
-        setTimeout(() => {
-            progressBar.style.width = `${percentage}%`;
-        }, 100);
-    }
-};
-
-window.updateInternsList = (users, todayAttendance) => {
-    const tbody = document.getElementById('internsList');
-    if (!tbody) return;
-    
-    tbody.innerHTML = '';
-    
-    users.forEach(user => {
-        const checkIn = todayAttendance.find(a => a.userId === user.id && a.action === 'checkin');
-        const checkOut = todayAttendance.find(a => a.userId === user.id && a.action === 'checkout');
-        const isPresent = !!checkIn;
-        const isCheckedOut = !!checkOut;
-        const isLate = checkIn?.isLate || false;
-        
-        const row = document.createElement('tr');
-        row.className = 'hover:bg-gray-50 transition-colors';
-        
-        let statusClass, statusText, statusIcon;
-        
-        if (isCheckedOut) {
-            statusClass = 'bg-blue-100 text-blue-800';
-            statusText = 'Checked Out';
-            statusIcon = 'fa-sign-out-alt';
-        } else if (isPresent) {
-            statusClass = isLate ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800';
-            statusText = isLate ? 'Late' : 'Present';
-            statusIcon = isLate ? 'fa-clock' : 'fa-check-circle';
-        } else {
-            statusClass = 'bg-red-100 text-red-800';
-            statusText = 'Absent';
-            statusIcon = 'fa-times-circle';
-        }
-        
-        row.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center">
-                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                        ${(user.displayName || user.email).split(' ').map(n => n[0]).join('').toUpperCase()}
-                    </div>
-                    <div class="ml-4">
-                        <div class="text-sm font-medium text-gray-900">${user.displayName || user.email}</div>
-                        <div class="text-sm text-gray-500">${user.employeeId || 'N/A'}</div>
-                    </div>
-                </div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    ${user.department || 'N/A'}
-                </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">
-                    <i class="fas ${statusIcon} mr-1"></i>
-                    ${statusText}
-                </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                ${checkIn ? checkIn.time : 'Not checked in'}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                ${checkOut ? checkOut.time : 'Not checked out'}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button onclick="viewInternDetails('${user.id}')" class="text-blue-600 hover:text-blue-900 mr-3">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button onclick="editIntern('${user.id}')" class="text-green-600 hover:text-green-900 mr-3">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button onclick="deleteIntern('${user.id}')" class="text-red-600 hover:text-red-900">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        `;
-        
-        tbody.appendChild(row);
-    });
-};
-
-// Utility functions
-window.convertToCSV = (data) => {
-    if (!data.length) return '';
-    
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-        headers.join(','),
-        ...data.map(row => 
-            headers.map(header => {
-                const value = row[header];
-                if (value && typeof value === 'object' && value.toDate) {
-                    return `"${value.toDate().toISOString()}"`;
-                }
-                return `"${value || ''}"`;
-            }).join(',')
-        )
-    ].join('\n');
-    
-    return csvContent;
-};
-
-window.generateAdminAnalytics = (attendanceData) => {
-    // This would generate charts and analytics
-    console.log('Generating analytics for', attendanceData.length, 'records');
-};
-
-window.updateAdminNotifications = (users, todayAttendance) => {
-    // Update admin notification badge based on absent users, late arrivals, etc.
-    const absentCount = users.length - todayAttendance.filter(a => a.action === 'checkin').length;
-    const lateCount = todayAttendance.filter(a => a.isLate).length;
-    const totalNotifications = absentCount + lateCount;
-    
-    updateNotificationBadge(totalNotifications);
-};
-
-window.updateInternStats = (attendanceRecords) => {
-    const currentMonth = new Date().getMonth();
-    const monthlyRecords = attendanceRecords.filter(record => {
-        const recordDate = record.timestamp?.toDate();
-        return recordDate && recordDate.getMonth() === currentMonth;
-    });
-    
-    const checkInRecords = monthlyRecords.filter(r => r.action === 'checkin');
-    const checkOutRecords = monthlyRecords.filter(r => r.action === 'checkout');
-    
-    document.getElementById('monthlyAttendance').textContent = `${checkInRecords.length}/22`;
-    document.getElementById('avgHours').textContent = '8.2';
-    document.getElementById('lateDays').textContent = checkInRecords.filter(r => r.isLate).length;
-    document.getElementById('streak').textContent = '5 days';
-};
-
-window.updateRecentActivity = (attendanceRecords) => {
-    const container = document.getElementById('recentActivity');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    attendanceRecords.slice(0, 3).forEach(record => {
-        const activityItem = document.createElement('div');
-        activityItem.className = 'flex items-center p-3 bg-green-50 rounded-lg';
-        
-        const timestamp = record.timestamp?.toDate();
-        const timeString = timestamp ? timestamp.toLocaleString() : 'Unknown time';
-        const actionText = record.action === 'checkin' ? 'Checked in' : 'Checked out';
-        
-        activityItem.innerHTML = `
-            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <i class="fas ${record.action === 'checkin' ? 'fa-sign-in-alt' : 'fa-sign-out-alt'} text-green-600"></i>
-            </div>
-            <div class="ml-3 flex-1">
-                <p class="text-sm font-medium text-gray-900">${actionText} successfully</p>
-                <p class="text-xs text-gray-500">${timeString}</p>
-            </div>
-        `;
-        
-        container.appendChild(activityItem);
-    });
-};
-
-// Event listeners
-document.getElementById('googleSignInBtn').addEventListener('click', handleGoogleSignIn);
-document.getElementById('googleSignUpBtn').addEventListener('click', handleGoogleSignIn);
-
-// Initialize app
-document.addEventListener('DOMContentLoaded', function() {
-    updateTime();
-    setInterval(updateTime, 1000);
-    checkLocation();
-    
-    // Show notification badge
-    setTimeout(() => {
-        const badge = document.getElementById('notificationBadge');
-        if (badge) badge.classList.remove('hidden');
-    }, 2000);
-});
-
 // Navigation functions
 function showLanding() {
-    hideAllPages();
-    document.getElementById('landingPage').classList.remove('hidden');
+  hideAllPages();
+  document.getElementById("landingPage").classList.remove("hidden");
 }
 
 function showLogin(role) {
-    hideAllPages();
-    document.getElementById('loginPage').classList.remove('hidden');
-    window.userRole = role;
-    
-    const title = document.getElementById('loginTitle');
-    const subtitle = document.getElementById('loginSubtitle');
-    
-    if (role === 'admin') {
-        title.textContent = 'Admin Login';
-        subtitle.textContent = 'Access admin dashboard';
-    } else {
-        title.textContent = 'Intern Login';
-        subtitle.textContent = 'Access your dashboard';
-    }
+  hideAllPages();
+  document.getElementById("loginPage").classList.remove("hidden");
+  window.userRole = role;
+
+  const title = document.getElementById("loginTitle");
+  const subtitle = document.getElementById("loginSubtitle");
+
+  if (role === "admin") {
+    title.textContent = "Admin Login";
+    subtitle.textContent = "Access admin dashboard";
+  } else {
+    title.textContent = "Intern Login";
+    subtitle.textContent = "Access your dashboard";
+  }
 }
 
 function showSignup() {
-    hideAllPages();
-    document.getElementById('signupPage').classList.remove('hidden');
+  hideAllPages();
+  document.getElementById("signupPage").classList.remove("hidden");
 }
 
-// ...previous code above remains unchanged...
-
 function showForgotPassword() {
-    hideAllPages();
-    document.getElementById('forgotPasswordPage').classList.remove('hidden');
+  hideAllPages();
+  document.getElementById("forgotPasswordPage").classList.remove("hidden");
 }
 
 function hideAllPages() {
-    const pages = [
-        'landingPage',
-        'loginPage',
-        'signupPage',
-        'forgotPasswordPage',
-        'internDashboard',
-        'adminDashboard'
-    ];
-    pages.forEach(page => {
-        const el = document.getElementById(page);
-        if (el) el.classList.add('hidden');
-    });
+  const pages = [
+    "landingPage",
+    "loginPage",
+    "signupPage",
+    "forgotPasswordPage",
+    "internDashboard",
+    "adminDashboard",
+  ];
+  pages.forEach((page) => {
+    document.getElementById(page).classList.add("hidden");
+  });
 }
 
 function showInternDashboard() {
-    hideAllPages();
-    document.getElementById('internDashboard').classList.remove('hidden');
+  hideAllPages();
+  document.getElementById("internDashboard").classList.remove("hidden");
+  generateCalendar();
+  updateTime();
+  setInterval(updateTime, 1000);
+  window.loadInternData();
+  window.setupRealTimeListeners();
 }
 
 function showAdminDashboard() {
-    hideAllPages();
-    document.getElementById('adminDashboard').classList.remove('hidden');
+  hideAllPages();
+  document.getElementById("adminDashboard").classList.remove("hidden");
+  generateDailyQR();
+  window.loadAdminData();
+  window.setupRealTimeListeners();
 }
 
-// Utility functions for password, time, location
-function togglePassword(inputId) {
-    const input = document.getElementById(inputId);
-    const icon = input.nextElementSibling.querySelector('i');
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.classList.remove('fa-eye');
-        icon.classList.add('fa-eye-slash');
-    } else {
-        input.type = 'password';
-        icon.classList.remove('fa-eye-slash');
-        icon.classList.add('fa-eye');
+// Form handlers
+document
+  .getElementById("loginForm")
+  .addEventListener("submit", async function (e) {
+    e.preventDefault();
+    clearFormErrors();
+
+    const email = document.getElementById("loginEmail").value.trim();
+    const password = document.getElementById("loginPassword").value;
+
+    if (!validateEmail(email)) {
+      showFieldError("loginEmailError", "Please enter a valid email address");
+      return;
     }
+
+    if (!password) {
+      showFieldError("loginPasswordError", "Password is required");
+      return;
+    }
+
+    try {
+      await window.loginUser(email, password);
+      clearAutoSave("loginForm"); // Clear auto-saved data on successful login
+    } catch (error) {
+      // Error is already handled in loginUser function
+    }
+  });
+
+document
+  .getElementById("signupForm")
+  .addEventListener("submit", async function (e) {
+    e.preventDefault();
+    clearFormErrors();
+
+    const firstName = document.getElementById("firstName").value.trim();
+    const lastName = document.getElementById("lastName").value.trim();
+    const email = document.getElementById("signupEmail").value.trim();
+    const employeeId = document.getElementById("employeeId").value.trim();
+    const department = document.getElementById("department").value;
+    const password = document.getElementById("signupPassword").value;
+
+    let hasErrors = false;
+
+    if (!firstName) {
+      showFieldError("firstNameError", "First name is required");
+      hasErrors = true;
+    }
+
+    if (!lastName) {
+      showFieldError("lastNameError", "Last name is required");
+      hasErrors = true;
+    }
+
+    if (!validateEmail(email)) {
+      showFieldError("signupEmailError", "Please enter a valid email address");
+      hasErrors = true;
+    }
+
+    if (!employeeId) {
+      showFieldError("employeeIdError", "Employee ID is required");
+      hasErrors = true;
+    }
+
+    if (!department) {
+      showFieldError("departmentError", "Please select a department");
+      hasErrors = true;
+    }
+
+    if (!validatePassword(password)) {
+      showFieldError(
+        "signupPasswordError",
+        "Password must be at least 8 characters with uppercase, lowercase, and number"
+      );
+      hasErrors = true;
+    }
+
+    if (hasErrors) return;
+
+    const userData = {
+      firstName,
+      lastName,
+      email,
+      employeeId,
+      department,
+    };
+
+    try {
+      await window.registerUser(email, password, userData);
+      clearAutoSave("signupForm"); // Clear auto-saved data on successful signup
+    } catch (error) {
+      // Error is already handled in registerUser function
+    }
+  });
+
+document
+  .getElementById("forgotPasswordForm")
+  .addEventListener("submit", async function (e) {
+    e.preventDefault();
+    clearFormErrors();
+
+    const email = document.getElementById("resetEmail").value.trim();
+
+    if (!validateEmail(email)) {
+      showFieldError("resetEmailError", "Please enter a valid email address");
+      return;
+    }
+
+    try {
+      await window.resetPassword(email);
+      setTimeout(() => showLogin("intern"), 2000);
+    } catch (error) {
+      // Error is already handled in resetPassword function
+    }
+  });
+
+// Form validation utilities
+function validateEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
 }
 
 function validatePassword(password) {
-    const minLength = password.length >= 8;
-    const hasUpper = /[A-Z]/.test(password);
-    const hasLower = /[a-z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    return minLength && hasUpper && hasLower && hasNumber;
+  const minLength = password.length >= 8;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+
+  return minLength && hasUpper && hasLower && hasNumber;
+}
+
+function showFieldError(fieldId, message) {
+  const errorElement = document.getElementById(fieldId);
+  if (errorElement) {
+    errorElement.textContent = message;
+    errorElement.classList.remove("hidden");
+  }
+}
+
+function clearFormErrors() {
+  const errorElements = document.querySelectorAll(".error-message");
+  errorElements.forEach((element) => {
+    element.textContent = "";
+    element.classList.add("hidden");
+  });
+}
+
+// Utility functions
+function togglePassword(inputId) {
+  const input = document.getElementById(inputId);
+  const icon = input.nextElementSibling.querySelector("i");
+
+  if (input.type === "password") {
+    input.type = "text";
+    icon.classList.remove("fa-eye");
+    icon.classList.add("fa-eye-slash");
+  } else {
+    input.type = "password";
+    icon.classList.remove("fa-eye-slash");
+    icon.classList.add("fa-eye");
+  }
 }
 
 function updateTime() {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-    });
-    const timeElement = document.getElementById('checkInTime');
-    if (timeElement) timeElement.textContent = timeString;
+  const now = new Date();
+  const timeString = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const dateString = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const timeElement = document.getElementById("checkInTime");
+  const dateElement = document.getElementById("currentDate");
+
+  if (timeElement) timeElement.textContent = timeString;
+  if (dateElement) dateElement.textContent = dateString;
 }
 
-// Enhanced location check (re-uses calculateDistance)
-function checkLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            function(position) {
-                const companyLat = window.companyCoordinates?.latitude || 3.0;
-                const companyLng = window.companyCoordinates?.longitude || 11.0;
-                const userLat = position.coords.latitude;
-                const userLng = position.coords.longitude;
-                const distance = calculateDistance(userLat, userLng, companyLat, companyLng);
-                const locationStatus = document.getElementById('locationStatus');
-                if (locationStatus) {
-                    if (distance <= 1) {
-                        window.isLocationVerified = true;
-                        locationStatus.innerHTML = `
-                            <i class="fas fa-map-marker-alt text-2xl text-green-500 mb-2"></i>
-                            <p class="text-green-600 font-medium">Location verified ✓</p>
-                            <p class="text-xs text-gray-500">${distance.toFixed(2)}km from office</p>
-                        `;
-                    } else {
-                        window.isLocationVerified = false;
-                        locationStatus.innerHTML = `
-                            <i class="fas fa-map-marker-alt text-2xl text-red-500 mb-2"></i>
-                            <p class="text-red-600 font-medium">Not at company location</p>
-                            <p class="text-xs text-gray-500">${distance.toFixed(2)}km from office</p>
-                        `;
-                    }
-                }
-            },
-            function(error) {
-                const locationStatus = document.getElementById('locationStatus');
-                if (locationStatus) {
-                    locationStatus.innerHTML = `
-                        <i class="fas fa-exclamation-triangle text-2xl text-yellow-500 mb-2"></i>
-                        <p class="text-yellow-600">Location access denied</p>
-                        <p class="text-xs text-gray-500">Enable location for attendance</p>
-                    `;
-                }
-            }
-        );
-    }
-}
+function updateUserUI(name, avatarData) {
+  const userName =
+    document.getElementById("userName") || document.getElementById("adminName");
+  const userAvatar =
+    document.getElementById("userAvatar") ||
+    document.getElementById("adminAvatar");
 
-// Attendance button UI logic
-function updateAttendanceButtons(action) {
-    const checkInBtn = document.getElementById('checkInBtn');
-    const checkOutBtn = document.getElementById('checkOutBtn');
-    if (action === 'checkin') {
-        if (checkInBtn) checkInBtn.disabled = true;
-        if (checkOutBtn) checkOutBtn.disabled = false;
-        if (checkInBtn) checkInBtn.classList.add('hidden');
-        if (checkOutBtn) checkOutBtn.classList.remove('hidden');
-    } else if (action === 'checkout') {
-        if (checkInBtn) checkInBtn.disabled = true;
-        if (checkOutBtn) checkOutBtn.disabled = true;
-        if (checkInBtn) checkInBtn.classList.add('hidden');
-        if (checkOutBtn) checkOutBtn.classList.add('hidden');
+  if (userName) userName.textContent = name;
+
+  if (userAvatar) {
+    if (typeof avatarData === "string" && avatarData.startsWith("http")) {
+      // It's a photo URL
+      userAvatar.innerHTML = `<img src="${avatarData}" alt="Profile" class="w-8 h-8 rounded-full object-cover">`;
     } else {
-        if (checkInBtn) checkInBtn.disabled = false;
-        if (checkOutBtn) checkOutBtn.disabled = true;
-        if (checkInBtn) checkInBtn.classList.remove('hidden');
-        if (checkOutBtn) checkOutBtn.classList.add('hidden');
+      // It's initials
+      userAvatar.textContent = avatarData;
+      userAvatar.innerHTML = avatarData; // Reset to text content
     }
+  }
 }
 
-// Full QR code scan flow
+// Attendance functions
+async function manualCheckIn() {
+  if (!window.isLocationVerified) {
+    showNotification("Location verification required", "error");
+    return;
+  }
+
+  await window.checkIn();
+}
+
+async function manualCheckOut() {
+  await window.checkOut();
+}
+
+function updateAttendanceButtons(status) {
+  const checkInBtn = document.getElementById("checkInBtn");
+  const checkOutBtn = document.getElementById("checkOutBtn");
+
+  if (status === "checked-in") {
+    checkInBtn.classList.add("hidden");
+    checkOutBtn.classList.remove("hidden");
+  } else {
+    checkInBtn.classList.remove("hidden");
+    checkOutBtn.classList.add("hidden");
+  }
+}
+
+function updateCurrentStatus(status, time) {
+  const statusElement = document.getElementById("currentStatus");
+  const indicator = statusElement.querySelector(".status-indicator");
+  const text = statusElement.querySelector("span:last-child");
+
+  if (status === "checked-in") {
+    indicator.className = "status-indicator status-online";
+    text.textContent = `Checked in at ${time}`;
+  } else if (status === "checked-out") {
+    indicator.className = "status-indicator status-offline";
+    text.textContent = `Checked out at ${time}`;
+  }
+}
+
+function startWorkingHoursTimer() {
+  if (window.workingHoursTimer) {
+    clearInterval(window.workingHoursTimer);
+  }
+
+  window.workingHoursTimer = setInterval(() => {
+    if (window.currentAttendanceSession) {
+      const elapsed =
+        (Date.now() - window.currentAttendanceSession.checkInTime) /
+        (1000 * 60 * 60);
+      updateWorkingHours(elapsed);
+    }
+  }, 60000);
+}
+
+function stopWorkingHoursTimer() {
+  if (window.workingHoursTimer) {
+    clearInterval(window.workingHoursTimer);
+    window.workingHoursTimer = null;
+  }
+}
+
+function updateWorkingHours(hours) {
+  const hoursElement = document.getElementById("workingHours");
+  if (hoursElement) {
+    const h = Math.floor(hours);
+    const m = Math.floor((hours - h) * 60);
+    hoursElement.textContent = `${h}:${m.toString().padStart(2, "0")}`;
+  }
+}
+
+function addRecentActivity(action, time) {
+  const activityContainer = document.getElementById("recentActivity");
+  if (!activityContainer) return;
+
+  // Remove "no activity" message if it exists
+  const noActivity = activityContainer.querySelector(".text-center");
+  if (noActivity) {
+    noActivity.remove();
+  }
+
+  const newActivity = document.createElement("div");
+  newActivity.className =
+    "flex items-center space-x-3 p-3 bg-gray-50 rounded-lg";
+  newActivity.innerHTML = `
+                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-900">${action}</p>
+                    <p class="text-xs text-gray-500">${time}</p>
+                </div>
+            `;
+
+  activityContainer.insertBefore(newActivity, activityContainer.firstChild);
+
+  // Keep only the last 5 activities
+  while (activityContainer.children.length > 5) {
+    activityContainer.removeChild(activityContainer.lastChild);
+  }
+}
+
+// QR Code functions
 function startQRScan() {
-    const video = document.getElementById('qrVideo');
-    const canvas = document.getElementById('qrCanvas');
-    const scanner = document.getElementById('qrScanner');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        .then(function(stream) {
-            window.qrStream = stream;
-            video.srcObject = stream;
-            video.classList.remove('hidden');
-            scanner.classList.add('hidden');
-            video.play();
-            scanQRCode(video, canvas);
-        })
-        .catch(function(err) {
-            showNotification('Camera access denied', 'error');
-        });
+  const video = document.getElementById("qrVideo");
+  const scanner = document.getElementById("qrScanner");
+
+  navigator.mediaDevices
+    .getUserMedia({ video: { facingMode: "environment" } })
+    .then((stream) => {
+      window.qrStream = stream;
+      video.srcObject = stream;
+      video.classList.remove("hidden");
+      scanner.classList.add("hidden");
+      video.setAttribute("playsinline", true); // For iOS Safari
+      video.play();
+
+      requestAnimationFrame(() => scanQRCode(video));
+    })
+    .catch((err) => {
+      console.error("Camera access denied:", err);
+      showNotification("Camera access denied", "error");
+    });
 }
 
-function scanQRCode(video, canvas) {
-    const context = canvas.getContext('2d');
-    function tick() {
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            canvas.height = video.videoHeight;
-            canvas.width = video.videoWidth;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
-            if (code) {
-                stopQRScan();
-                window.processQRCode(code.data);
-                return;
-            }
-        }
-        requestAnimationFrame(tick);
+function scanQRCode(video) {
+  const canvas = document.getElementById("qrCanvas");
+  const context = canvas.getContext("2d");
+
+  function tick() {
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert", // improves detection speed
+      });
+
+      if (code) {
+        stopQRScan();
+        processQRCode(code.data);
+        return;
+      }
     }
-    tick();
+    requestAnimationFrame(tick);
+  }
+
+  tick();
 }
 
 function stopQRScan() {
-    if (window.qrStream) {
-        window.qrStream.getTracks().forEach(track => track.stop());
-        window.qrStream = null;
+  if (window.qrStream) {
+    window.qrStream.getTracks().forEach((track) => track.stop());
+    window.qrStream = null;
+  }
+
+  const video = document.getElementById("qrVideo");
+  const scanner = document.getElementById("qrScanner");
+
+  video.classList.add("hidden");
+  scanner.classList.remove("hidden");
+}
+
+function processQRCode(data) {
+  try {
+    const qrData = JSON.parse(data);
+
+    if (qrData.type === "attendance") {
+      if (window.currentAttendanceSession) {
+        manualCheckOut(); // use your existing checkout logic
+      } else {
+        manualCheckIn(); // use your existing checkin logic
+      }
+    } else {
+      showNotification("Invalid QR code", "error");
     }
-    const video = document.getElementById('qrVideo');
-    const scanner = document.getElementById('qrScanner');
-    video.classList.add('hidden');
-    scanner.classList.remove('hidden');
+  } catch (error) {
+    console.error("QR processing error:", error);
+    showNotification("Invalid QR code format", "error");
+  }
 }
 
-// Handle manual checkin/checkout
-async function manualCheckIn() {
-    await window.recordAttendance('manual', 'checkin');
-}
-async function manualCheckOut() {
-    await window.recordAttendance('manual', 'checkout');
-}
-
-// -- Add any remaining UI helper functions and admin/intern CRUD as needed --
-
-// Form handlers (optional, if forms are present)
-document.getElementById('loginForm')?.addEventListener('submit', function(e) {
+// Form event listeners
+document
+  .getElementById("profileForm")
+  .addEventListener("submit", async function (e) {
     e.preventDefault();
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    window.handleEmailSignIn(email, password);
-});
-document.getElementById('signupForm')?.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const userData = {
-        firstName: document.getElementById('firstName').value,
-        lastName: document.getElementById('lastName').value,
-        employeeId: document.getElementById('employeeId').value,
-        department: document.getElementById('department').value,
-        displayName: document.getElementById('firstName').value + ' ' + document.getElementById('lastName').value
+
+    const profileData = {
+      firstName: document.getElementById("profileFirstName").value.trim(),
+      lastName: document.getElementById("profileLastName").value.trim(),
+      department: document.getElementById("profileDepartment").value,
     };
-    const email = document.getElementById('signupEmail').value;
-    const password = document.getElementById('signupPassword').value;
-    if (!validatePassword(password)) {
-        showNotification('Password must meet requirements', 'error');
-        return;
+
+    if (
+      !profileData.firstName ||
+      !profileData.lastName ||
+      !profileData.department
+    ) {
+      showNotification("Please fill in all required fields", "error");
+      return;
     }
-    window.handleEmailSignUp(email, password, userData);
-});
-document.getElementById('forgotPasswordForm')?.addEventListener('submit', function(e) {
+
+    await window.updateUserProfile(profileData);
+  });
+
+document
+  .getElementById("profileCompletionForm")
+  .addEventListener("submit", async function (e) {
     e.preventDefault();
-    const email = document.getElementById('resetEmail').value;
-    window.handlePasswordReset(email);
+
+    const profileData = {
+      firstName: document.getElementById("googleFirstName").value.trim(),
+      lastName: document.getElementById("googleLastName").value.trim(),
+      employeeId: document.getElementById("googleEmployeeId").value.trim(),
+      department: document.getElementById("googleDepartment").value,
+    };
+
+    if (
+      !profileData.firstName ||
+      !profileData.lastName ||
+      !profileData.employeeId ||
+      !profileData.department
+    ) {
+      showNotification("Please fill in all required fields", "error");
+      return;
+    }
+
+    await window.completeGoogleProfile(profileData);
+  });
+
+document
+  .getElementById("addInternForm")
+  .addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const userData = {
+      firstName: document.getElementById("newInternFirstName").value.trim(),
+      lastName: document.getElementById("newInternLastName").value.trim(),
+      email: document.getElementById("newInternEmail").value.trim(),
+      employeeId: document.getElementById("newInternEmployeeId").value.trim(),
+      department: document.getElementById("newInternDepartment").value,
+    };
+
+    const password = document.getElementById("newInternPassword").value;
+
+    if (
+      !userData.firstName ||
+      !userData.lastName ||
+      !userData.email ||
+      !userData.employeeId ||
+      !userData.department ||
+      !password
+    ) {
+      showNotification("Please fill in all required fields", "error");
+      return;
+    }
+
+    if (!validateEmail(userData.email)) {
+      showNotification("Please enter a valid email address", "error");
+      return;
+    }
+
+    await window.addNewIntern(userData, password);
+  });
+
+// Admin functions
+function generateDailyQR() {
+  const qrData = {
+    type: "attendance",
+    date: new Date().toDateString(),
+    timestamp: Date.now(),
+    code: Math.random().toString(36).substr(2, 9),
+  };
+
+  const canvas = document.getElementById("qrCodeCanvas");
+  if (canvas) {
+    QRCode.toCanvas(canvas, JSON.stringify(qrData), {
+      width: 200,
+      margin: 2,
+      color: {
+        dark: "#1f2937",
+        light: "#ffffff",
+      },
+    });
+  }
+
+  showNotification("Daily QR code generated!", "success");
+}
+
+function downloadQR() {
+  const canvas = document.getElementById("qrCodeCanvas");
+  if (canvas) {
+    const link = document.createElement("a");
+    link.download = `attendance-qr-${new Date().toDateString()}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+    showNotification("QR code downloaded!", "success");
+  }
+}
+
+function exportAttendance() {
+  window.exportAttendanceData();
+}
+
+function viewReports() {
+  showReports();
+}
+
+// Calendar generation
+function generateCalendar() {
+  const calendarDays = document.getElementById("calendarDays");
+  const calendarMonth = document.getElementById("calendarMonth");
+
+  if (!calendarDays || !calendarMonth) return;
+
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  calendarMonth.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+  calendarDays.innerHTML = "";
+
+  // Empty cells for days before the first day of the month
+  for (let i = 0; i < firstDay; i++) {
+    const emptyDay = document.createElement("div");
+    emptyDay.className = "h-8";
+    calendarDays.appendChild(emptyDay);
+  }
+
+  // Days of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayElement = document.createElement("div");
+    dayElement.className =
+      "h-8 flex items-center justify-center text-sm cursor-pointer hover:bg-gray-100 rounded";
+    dayElement.textContent = day;
+
+    // Highlight today
+    if (day === today.getDate()) {
+      dayElement.className += " bg-blue-600 text-white hover:bg-blue-700";
+    }
+
+    // Add attendance indicators (will be populated with real data later)
+    if (day < today.getDate() && Math.random() > 0.3) {
+      dayElement.className += " bg-green-100 text-green-800";
+      dayElement.title = "Present";
+    }
+
+    calendarDays.appendChild(dayElement);
+  }
+}
+
+// Modal functions
+function showProfile() {
+  const modal = document.getElementById("profileModal");
+  if (!modal) return;
+  if (!window.currentUser) return;
+
+  const avatar = document.getElementById("profileAvatar");
+  const firstName = document.getElementById("profileFirstName");
+  const lastName = document.getElementById("profileLastName");
+  const email = document.getElementById("profileEmail");
+  const employeeId = document.getElementById("profileEmployeeId");
+  const department = document.getElementById("profileDepartment");
+
+  // Populate form with current user data
+  if (avatar && window.currentUser.firstName && window.currentUser.lastName) {
+    avatar.textContent =
+      window.currentUser.firstName.charAt(0) +
+      window.currentUser.lastName.charAt(0);
+  }
+  if (firstName) firstName.value = window.currentUser.firstName || "";
+  if (lastName) lastName.value = window.currentUser.lastName || "";
+  if (email) email.value = window.currentUser.email || "";
+  if (employeeId) employeeId.value = window.currentUser.employeeId || "";
+  if (department) department.value = window.currentUser.department || "";
+
+  modal.style.display = "flex";
+
+  closeAllMenus();
+}
+
+function closeProfile() {
+  const modal = document.getElementById("profileModal");
+  if (modal) modal.style.display = "none";
+}
+
+function showSettings() {
+  const modal = document.getElementById("settingsModal");
+  if (modal) modal.style.display = "flex";
+  closeAllMenus();
+}
+
+function closeSettings() {
+  const modal = document.getElementById("settingsModal");
+  if (modal) modal.style.display = "none";
+}
+
+function showAddIntern() {
+  const modal = document.getElementById("addInternModal");
+  if (modal) modal.style.display = "flex";
+}
+
+function closeAddIntern() {
+  const modal = document.getElementById("addInternModal");
+  if (modal) modal.style.display = "none";
+  const form = document.getElementById("addInternForm");
+  if (form) form.reset();
+}
+
+function showReports() {
+  loadReportsData();
+  const modal = document.getElementById("reportsModal");
+  if (modal) modal.style.display = "flex";
+}
+
+function closeReports() {
+  const modal = document.getElementById("reportsModal");
+  if (modal) modal.style.display = "none";
+}
+
+function showProfileCompletion(userData) {
+  const modal = document.getElementById("profileCompletionModal");
+  const photo = document.getElementById("googleUserPhoto");
+  const initials = document.getElementById("googleUserInitials");
+  const firstName = document.getElementById("googleFirstName");
+  const lastName = document.getElementById("googleLastName");
+  const email = document.getElementById("googleEmail");
+  const employeeId = document.getElementById("googleEmployeeId");
+
+  // Show user photo or initials
+  if (userData.photoURL) {
+    photo.src = userData.photoURL;
+    photo.classList.remove("hidden");
+    initials.classList.add("hidden");
+  } else {
+    initials.textContent =
+      userData.firstName.charAt(0) + (userData.lastName.charAt(0) || "");
+    photo.classList.add("hidden");
+    initials.classList.remove("hidden");
+  }
+
+  // Populate form
+  firstName.value = userData.firstName || "";
+  lastName.value = userData.lastName || "";
+  email.value = userData.email || "";
+  employeeId.value = userData.employeeId || "";
+
+  modal.classList.remove("hidden");
+  hideAllPages();
+}
+
+function closeProfileCompletion() {
+  document.getElementById("profileCompletionModal").classList.add("hidden");
+}
+
+function closeAllMenus() {
+  const menus = ["userMenu", "adminUserMenu"];
+  menus.forEach((menuId) => {
+    const menu = document.getElementById(menuId);
+    if (menu) menu.classList.add("hidden");
+  });
+}
+
+// Settings functions
+function saveSettings() {
+  const emailNotifications =
+    document.getElementById("emailNotifications").checked;
+  const locationTracking = document.getElementById("locationTracking").checked;
+  const darkMode = document.getElementById("darkMode").checked;
+
+  // Save to localStorage for now (could be saved to Firebase)
+  localStorage.setItem(
+    "settings",
+    JSON.stringify({
+      emailNotifications,
+      locationTracking,
+      darkMode,
+    })
+  );
+
+  if (darkMode) {
+    document.body.classList.add("dark");
+  } else {
+    document.body.classList.remove("dark");
+  }
+
+  showNotification("Settings saved successfully!", "success");
+  closeSettings();
+}
+
+function changePassword() {
+  showNotification("Password change feature - Coming soon!", "info");
+}
+
+// Reports functions
+async function loadReportsData() {
+  if (!window.currentUser) return;
+
+  try {
+    const now = new Date();
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let attendanceQuery;
+    if (window.userRole === "admin") {
+      attendanceQuery = query(
+        collection(window.firebaseDb, "attendance"),
+        where("createdAt", ">=", startOfMonth)
+      );
+    } else {
+      attendanceQuery = query(
+        collection(window.firebaseDb, "attendance"),
+        where("userId", "==", window.currentUser.uid),
+        where("createdAt", ">=", startOfMonth)
+      );
+    }
+
+    const attendanceDocs = await getDocs(attendanceQuery);
+    const attendanceData = attendanceDocs.docs.map((doc) => doc.data());
+
+    // Calculate weekly attendance
+    const weeklyData = attendanceData.filter(
+      (record) => record.createdAt && record.createdAt.toDate() >= startOfWeek
+    );
+    const weeklyRate =
+      weeklyData.length > 0
+        ? (weeklyData.filter((r) => r.status === "checked-out").length /
+            weeklyData.length) *
+          100
+        : 0;
+
+    // Calculate monthly attendance
+    const monthlyRate =
+      attendanceData.length > 0
+        ? (attendanceData.filter((r) => r.status === "checked-out").length /
+            attendanceData.length) *
+          100
+        : 0;
+
+    // Calculate total hours
+    const totalHours = attendanceData.reduce(
+      (sum, record) => sum + (record.workingHours || 0),
+      0
+    );
+
+    // Update UI
+    document.getElementById(
+      "weeklyAttendance"
+    ).textContent = `${weeklyRate.toFixed(1)}%`;
+    document.getElementById(
+      "monthlyAttendanceRate"
+    ).textContent = `${monthlyRate.toFixed(1)}%`;
+    document.getElementById("totalHours").textContent = `${totalHours.toFixed(
+      1
+    )}h`;
+
+    // Load recent activity
+    const reportsActivity = document.getElementById("reportsActivity");
+    reportsActivity.innerHTML = "";
+
+    attendanceData.slice(0, 10).forEach((record) => {
+      const activity = document.createElement("div");
+      activity.className =
+        "flex items-center justify-between p-2 bg-white rounded border";
+      activity.innerHTML = `
+                        <div>
+                            <p class="text-sm font-medium">${
+                              record.userName || "Unknown User"
+                            }</p>
+                            <p class="text-xs text-gray-500">${
+                              record.date || "Unknown Date"
+                            }</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm">${
+                              record.workingHours
+                                ? record.workingHours.toFixed(1) + "h"
+                                : "N/A"
+                            }</p>
+                            <p class="text-xs text-gray-500">${
+                              record.status || "Unknown"
+                            }</p>
+                        </div>
+                    `;
+      reportsActivity.appendChild(activity);
+    });
+  } catch (error) {
+    console.error("Error loading reports data:", error);
+    showNotification("Error loading reports data", "error");
+  }
+}
+
+function exportReports() {
+  window.exportAttendanceData();
+}
+
+// Email log functions
+function viewEmailLog() {
+  const emailLog = JSON.parse(localStorage.getItem("emailLog") || "[]");
+  const emailLogContent = document.getElementById("emailLogContent");
+  const emailLogCount = document.getElementById("emailLogCount");
+
+  emailLogCount.textContent = emailLog.length;
+
+  if (emailLog.length === 0) {
+    emailLogContent.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-envelope text-2xl mb-2"></i>
+                        <p>No emails sent yet</p>
+                    </div>
+                `;
+  } else {
+    emailLogContent.innerHTML = "";
+
+    emailLog.reverse().forEach((email, index) => {
+      const emailEntry = document.createElement("div");
+      emailEntry.className = "bg-white p-4 rounded-lg border";
+
+      const typeColors = {
+        info: "bg-blue-100 text-blue-800",
+        reminder: "bg-yellow-100 text-yellow-800",
+        success: "bg-green-100 text-green-800",
+        error: "bg-red-100 text-red-800",
+      };
+
+      emailEntry.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-2 mb-1">
+                                    <span class="px-2 py-1 text-xs font-medium rounded-full ${
+                                      typeColors[email.type] || typeColors.info
+                                    }">
+                                        ${email.type.toUpperCase()}
+                                    </span>
+                                    <span class="text-sm text-gray-600">
+                                        ${new Date(
+                                          email.timestamp
+                                        ).toLocaleString()}
+                                    </span>
+                                </div>
+                                <h4 class="font-medium text-gray-900">${
+                                  email.subject
+                                }</h4>
+                                <p class="text-sm text-gray-600">To: ${
+                                  email.to
+                                }</p>
+                            </div>
+                            <button onclick="toggleEmailBody(${index})" class="text-blue-600 hover:text-blue-800 text-sm">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </div>
+                        <div id="emailBody${index}" class="hidden mt-3 p-3 bg-gray-50 rounded text-sm text-gray-700 whitespace-pre-wrap">
+                            ${email.body}
+                        </div>
+                    `;
+
+      emailLogContent.appendChild(emailEntry);
+    });
+  }
+
+  document.getElementById("emailLogModal").classList.remove("hidden");
+}
+
+function toggleEmailBody(index) {
+  const emailBody = document.getElementById(`emailBody${index}`);
+  emailBody.classList.toggle("hidden");
+}
+
+function closeEmailLog() {
+  document.getElementById("emailLogModal").classList.add("hidden");
+}
+
+function clearEmailLog() {
+  if (
+    confirm(
+      "Are you sure you want to clear the email log? This action cannot be undone."
+    )
+  ) {
+    localStorage.removeItem("emailLog");
+    showNotification("Email log cleared successfully", "success");
+    viewEmailLog(); // Refresh the view
+  }
+}
+
+function exportEmailLog() {
+  const emailLog = JSON.parse(localStorage.getItem("emailLog") || "[]");
+
+  if (emailLog.length === 0) {
+    showNotification("No email log data to export", "warning");
+    return;
+  }
+
+  // Prepare CSV data
+  const csvData = [];
+  csvData.push(["Timestamp", "To", "Subject", "Type", "Status", "Body"]);
+
+  emailLog.forEach((email) => {
+    csvData.push([
+      new Date(email.timestamp).toLocaleString(),
+      email.to,
+      email.subject,
+      email.type,
+      email.status,
+      email.body.replace(/\n/g, " "), // Replace newlines with spaces for CSV
+    ]);
+  });
+
+  // Create and download CSV
+  const csvContent = csvData
+    .map((row) =>
+      row.map((field) => `"${field.toString().replace(/"/g, '""')}"`).join(",")
+    )
+    .join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `email-log-${new Date().toISOString().split("T")[0]}.csv`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+
+  showNotification("Email log exported successfully!", "success");
+}
+
+// UI functions
+function toggleUserMenu(type = "intern") {
+  const menuId = type === "admin" ? "adminUserMenu" : "userMenu";
+  const menu = document.getElementById(menuId);
+  if (menu) {
+    menu.classList.toggle("hidden");
+  }
+}
+
+async function logout() {
+  try {
+    showLoading();
+    await window.firebaseAuth.signOut();
+
+    // Clean up
+    window.currentUser = null;
+    window.userRole = null;
+    window.currentAttendanceSession = null;
+    stopWorkingHoursTimer();
+
+    // Clear any listeners
+    window.attendanceListeners.forEach((unsubscribe) => unsubscribe());
+    window.attendanceListeners = [];
+
+    showNotification("Logged out successfully", "info");
+  } catch (error) {
+    console.error("Logout error:", error);
+    showNotification("Error logging out", "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+// Loading and notification functions
+function showLoading() {
+  document.getElementById("loadingOverlay").classList.remove("hidden");
+}
+
+function hideLoading() {
+  document.getElementById("loadingOverlay").classList.add("hidden");
+}
+
+function showNotification(message, type = "info", duration = 5000) {
+  const container = document.getElementById("notificationContainer");
+  const notification = document.createElement("div");
+
+  const colors = {
+    success: "bg-green-500",
+    error: "bg-red-500",
+    warning: "bg-yellow-500",
+    info: "bg-blue-500",
+  };
+
+  const icons = {
+    success: "fa-check-circle",
+    error: "fa-times-circle",
+    warning: "fa-exclamation-triangle",
+    info: "fa-info-circle",
+  };
+
+  notification.className = `notification ${colors[type]} text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 max-w-sm`;
+  notification.innerHTML = `
+                <i class="fas ${icons[type]}"></i>
+                <span class="flex-1">${message}</span>
+                <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+  container.appendChild(notification);
+
+  // Animate in
+  setTimeout(() => notification.classList.add("show"), 100);
+
+  // Auto remove
+  setTimeout(() => {
+    notification.classList.remove("show");
+    setTimeout(() => notification.remove(), 300);
+  }, duration);
+}
+
+// Network status monitoring
+function updateNetworkStatus() {
+  const offlineIndicator = document.getElementById("offlineIndicator");
+
+  if (navigator.onLine) {
+    offlineIndicator.classList.remove("show");
+  } else {
+    offlineIndicator.classList.add("show");
+  }
+}
+
+// Search and filter functionality for intern management
+document
+  .getElementById("searchInterns")
+  ?.addEventListener("input", filterInternsManagement);
+document
+  .getElementById("filterDepartment")
+  ?.addEventListener("change", filterInternsManagement);
+
+function filterInternsManagement() {
+  const searchTerm =
+    document.getElementById("searchInterns").value.toLowerCase() || "";
+  const departmentFilter =
+    document.getElementById("filterDepartment").value || "";
+
+  const rows = document.querySelectorAll("#internsList tr");
+
+  rows.forEach((row) => {
+    if (row.cells.length < 7) return; // Skip empty rows
+
+    const name =
+      row.cells[0]
+        ?.querySelector(".text-gray-900")
+        ?.textContent.toLowerCase() || "";
+    const email =
+      row.cells[0]
+        ?.querySelector(".text-gray-500")
+        ?.textContent.toLowerCase() || "";
+    const department = row.cells[1]?.textContent.toLowerCase() || "";
+
+    const matchesSearch =
+      name.includes(searchTerm) || email.includes(searchTerm);
+    const matchesDepartment =
+      !departmentFilter || department.includes(departmentFilter.toLowerCase());
+
+    if (matchesSearch && matchesDepartment) {
+      row.style.display = "";
+    } else {
+      row.style.display = "none";
+    }
+  });
+}
+
+// Click outside to close modals
+document.addEventListener("click", function (e) {
+  // Close user menus when clicking outside
+  if (!e.target.closest(".relative")) {
+    closeAllMenus();
+  }
+
+  // Close modals when clicking outside
+  const modals = [
+    "profileModal",
+    "settingsModal",
+    "addInternModal",
+    "reportsModal",
+    "profileCompletionModal",
+    "emailLogModal",
+  ];
+  modals.forEach((modalId) => {
+    const modal = document.getElementById(modalId);
+    if (modal && !modal.classList.contains("hidden")) {
+      const modalContent = modal.querySelector(".bg-white");
+      if (!modalContent.contains(e.target)) {
+        // Don't allow closing profile completion modal by clicking outside
+        if (modalId !== "profileCompletionModal") {
+          modal.classList.add("hidden");
+        }
+      }
+    }
+  });
 });
 
+// Session persistence check
+function checkSessionPersistence() {
+  const savedUser = localStorage.getItem("currentUser");
+  const savedRole = localStorage.getItem("userRole");
+  const lastLoginTime = localStorage.getItem("lastLoginTime");
+
+  if (savedUser && savedRole && lastLoginTime) {
+    try {
+      const userData = JSON.parse(savedUser);
+      const loginTime = parseInt(lastLoginTime);
+      const now = Date.now();
+      const sessionDuration = now - loginTime;
+      const maxSessionDuration = 24 * 60 * 60 * 1000; // 24 hours
+
+      if (sessionDuration < maxSessionDuration) {
+        // Session is still valid, restore user data
+        window.currentUser = userData;
+        window.userRole = savedRole;
+
+        console.log("Session restored from localStorage");
+
+        // Firebase auth will handle the rest when it initializes
+        return true;
+      } else {
+        // Session expired, clear data
+        localStorage.removeItem("currentUser");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("lastLoginTime");
+        console.log("Session expired, cleared localStorage");
+      }
+    } catch (error) {
+      console.error("Error parsing saved session:", error);
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("lastLoginTime");
+    }
+  }
+
+  return false;
+}
+
+// Initialize
+document.addEventListener("DOMContentLoaded", function () {
+  updateTime();
+  updateNetworkStatus();
+
+  // Check for existing session
+  const hasValidSession = checkSessionPersistence();
+  if (hasValidSession) {
+    showNotification("Restoring your session...", "info");
+  }
+
+  // Network status listeners
+  window.addEventListener("online", updateNetworkStatus);
+  window.addEventListener("offline", updateNetworkStatus);
+
+  // Load saved settings
+  const savedSettings = localStorage.getItem("settings");
+  if (savedSettings) {
+    try {
+      const settings = JSON.parse(savedSettings);
+      const emailNotifications = document.getElementById("emailNotifications");
+      const locationTracking = document.getElementById("locationTracking");
+      const darkMode = document.getElementById("darkMode");
+
+      if (emailNotifications)
+        emailNotifications.checked = settings.emailNotifications || false;
+      if (locationTracking)
+        locationTracking.checked = settings.locationTracking !== false; // Default to true
+      if (darkMode) darkMode.checked = settings.darkMode || false;
+
+      if (settings.darkMode) {
+        document.body.classList.add("dark");
+      }
+    } catch (error) {
+      console.error("Error loading saved settings:", error);
+    }
+  }
+
+  // Auto-save form data to prevent data loss
+  setupAutoSave();
+
+  if (!hasValidSession) {
+    showNotification(
+      "Welcome to AttendanceHub! Professional attendance management with Google Authentication support.",
+      "info"
+    );
+  }
+});
+
+// Auto-save form data
+function setupAutoSave() {
+  const forms = ["loginForm", "signupForm", "profileForm", "addInternForm"];
+
+  forms.forEach((formId) => {
+    const form = document.getElementById(formId);
+    if (form) {
+      const inputs = form.querySelectorAll("input, select");
+      inputs.forEach((input) => {
+        if (input.type !== "password") {
+          // Don't save passwords
+          input.addEventListener("input", function () {
+            const key = `autosave_${formId}_${input.id}`;
+            localStorage.setItem(key, input.value);
+          });
+
+          // Restore saved value
+          const key = `autosave_${formId}_${input.id}`;
+          const savedValue = localStorage.getItem(key);
+          if (savedValue && !input.value) {
+            input.value = savedValue;
+          }
+        }
+      });
+    }
+  });
+}
+
+// Clear auto-saved form data
+function clearAutoSave(formId) {
+  const form = document.getElementById(formId);
+  if (form) {
+    const inputs = form.querySelectorAll("input, select");
+    inputs.forEach((input) => {
+      const key = `autosave_${formId}_${input.id}`;
+      localStorage.removeItem(key);
+    });
+  }
+}
