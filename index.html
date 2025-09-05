@@ -21,6 +21,12 @@
       * {
         font-family: "Inter", sans-serif;
       }
+      body {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
 
       .gradient-bg {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -956,95 +962,95 @@
           class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md slide-in"
         >
           <div class="text-center mb-6">
-            <div
-              id="profileAvatar"
-              class="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4"
-            >
-              U
-            </div>
-            <h2 class="text-2xl font-bold text-gray-800">Profile</h2>
+        <div
+          id="profileAvatar"
+          class="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4"
+        >
+          U
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800">Profile</h2>
           </div>
 
           <form id="profileForm" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2"
-                  >First Name</label
-                >
-                <input
-                  type="text"
-                  id="profileFirstName"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2"
-                  >Last Name</label
-                >
-                <input
-                  type="text"
-                  id="profileLastName"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+          >First Name</label
+            >
+            <input
+          type="text"
+          id="profileFirstName"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+          >Last Name</label
+            >
+            <input
+          type="text"
+          id="profileLastName"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Email</label
-              >
-              <input
-                type="email"
-                id="profileEmail"
-                disabled
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50"
-              />
-            </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2"
+            >Email</label
+          >
+          <input
+            type="email"
+            id="profileEmail"
+            disabled
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50"
+          />
+        </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Employee ID</label
-              >
-              <input
-                type="text"
-                id="profileEmployeeId"
-                disabled
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50"
-              />
-            </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2"
+            >Employee ID</label
+          >
+          <input
+            type="text"
+            id="profileEmployeeId"
+            disabled
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50"
+          />
+        </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Department</label
-              >
-              <select
-                id="profileDepartment"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select Department</option>
-                <option value="engineering">Engineering</option>
-                <option value="marketing">Marketing</option>
-                <option value="hr">Human Resources</option>
-                <option value="finance">Finance</option>
-                <option value="operations">Operations</option>
-              </select>
-            </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2"
+            >Department</label
+          >
+          <select
+            id="profileDepartment"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">Select Department</option>
+            <option value="engineering">Engineering</option>
+            <option value="marketing">Marketing</option>
+            <option value="hr">Human Resources</option>
+            <option value="finance">Finance</option>
+            <option value="operations">Operations</option>
+          </select>
+        </div>
 
-            <div class="flex space-x-3 pt-4">
-              <button
-                type="submit"
-                class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-              >
-                Update Profile
-              </button>
-              <button
-                type="button"
-                onclick="closeProfile()"
-                class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-400 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+        <div class="flex space-x-3 pt-4">
+          <button
+            type="submit"
+            class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Update Profile
+          </button>
+          <button
+            type="button"
+            onclick="closeProfile()"
+            class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-400 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
           </form>
         </div>
       </div>
@@ -1058,90 +1064,90 @@
           class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md slide-in"
         >
           <div class="text-center mb-6">
-            <i class="fas fa-cog text-4xl text-gray-600 mb-4"></i>
-            <h2 class="text-2xl font-bold text-gray-800">Settings</h2>
+        <i class="fas fa-cog text-4xl text-gray-600 mb-4"></i>
+        <h2 class="text-2xl font-bold text-gray-800">Settings</h2>
           </div>
 
           <div class="space-y-4">
+        <div
+          class="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+        >
+          <div>
+            <h3 class="font-medium text-gray-900">Email Notifications</h3>
+            <p class="text-sm text-gray-500">
+          Receive attendance reminders
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+          type="checkbox"
+          id="emailNotifications"
+          class="sr-only peer"
+          checked
+            />
             <div
-              class="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-            >
-              <div>
-                <h3 class="font-medium text-gray-900">Email Notifications</h3>
-                <p class="text-sm text-gray-500">
-                  Receive attendance reminders
-                </p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="emailNotifications"
-                  class="sr-only peer"
-                  checked
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
-                ></div>
-              </label>
-            </div>
+          class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
+            ></div>
+          </label>
+        </div>
 
+        <div
+          class="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+        >
+          <div>
+            <h3 class="font-medium text-gray-900">Location Tracking</h3>
+            <p class="text-sm text-gray-500">Verify attendance location</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+          type="checkbox"
+          id="locationTracking"
+          class="sr-only peer"
+          checked
+            />
             <div
-              class="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-            >
-              <div>
-                <h3 class="font-medium text-gray-900">Location Tracking</h3>
-                <p class="text-sm text-gray-500">Verify attendance location</p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="locationTracking"
-                  class="sr-only peer"
-                  checked
-                />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
-                ></div>
-              </label>
-            </div>
+          class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
+            ></div>
+          </label>
+        </div>
 
+        <div
+          class="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+        >
+          <div>
+            <h3 class="font-medium text-gray-900">Dark Mode</h3>
+            <p class="text-sm text-gray-500">Switch to dark theme</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="darkMode" class="sr-only peer" />
             <div
-              class="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-            >
-              <div>
-                <h3 class="font-medium text-gray-900">Dark Mode</h3>
-                <p class="text-sm text-gray-500">Switch to dark theme</p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="darkMode" class="sr-only peer" />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
-                ></div>
-              </label>
-            </div>
+          class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"
+            ></div>
+          </label>
+        </div>
 
-            <button
-              onclick="changePassword()"
-              class="w-full flex items-center justify-center p-4 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
-            >
-              <i class="fas fa-key text-yellow-600 mr-3"></i>
-              <span class="text-yellow-700 font-medium">Change Password</span>
-            </button>
+        <button
+          onclick="changePassword()"
+          class="w-full flex items-center justify-center p-4 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
+        >
+          <i class="fas fa-key text-yellow-600 mr-3"></i>
+          <span class="text-yellow-700 font-medium">Change Password</span>
+        </button>
           </div>
 
           <div class="flex space-x-3 pt-6">
-            <button
-              onclick="saveSettings()"
-              class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              Save Settings
-            </button>
-            <button
-              onclick="closeSettings()"
-              class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-400 transition-colors"
-            >
-              Cancel
-            </button>
+        <button
+          onclick="saveSettings()"
+          class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+        >
+          Save Settings
+        </button>
+        <button
+          onclick="closeSettings()"
+          class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-400 transition-colors"
+        >
+          Cancel
+        </button>
           </div>
         </div>
       </div>
@@ -1155,68 +1161,68 @@
           class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md slide-in"
         >
           <div class="text-center mb-6">
-            <i class="fas fa-user-plus text-4xl text-blue-600 mb-4"></i>
-            <h2 class="text-2xl font-bold text-gray-800">Add New Intern</h2>
+        <i class="fas fa-user-plus text-4xl text-blue-600 mb-4"></i>
+        <h2 class="text-2xl font-bold text-gray-800">Add New Intern</h2>
           </div>
 
           <form id="addInternForm" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2"
-                  >First Name</label
-                >
-                <input
-                  type="text"
-                  id="newInternFirstName"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2"
-                  >Last Name</label
-                >
-                <input
-                  type="text"
-                  id="newInternLastName"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+          >First Name</label
+            >
+            <input
+          type="text"
+          id="newInternFirstName"
+          required
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+          >Last Name</label
+            >
+            <input
+          type="text"
+          id="newInternLastName"
+          required
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Email</label
-              >
-              <input
-                type="email"
-                id="newInternEmail"
-                required
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2"
+            >Email</label
+          >
+          <input
+            type="email"
+            id="newInternEmail"
+            required
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Employee ID</label
-              >
-              <input
-                type="text"
-                id="newInternEmployeeId"
-                required
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2"
+            >Employee ID</label
+          >
+          <input
+            type="text"
+            id="newInternEmployeeId"
+            required
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Department</label
-              >
-              <select
-                id="newInternDepartment"
-                required
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2"
+            >Department</label
+          >
+          <select
+            id="newInternDepartment"
+            required
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">Select Department</option>
                 <option value="engineering">Engineering</option>
@@ -2130,7 +2136,7 @@
             isActive: true,
           });
 
-          showNotification("Account created successfully!", "success");
+          showNotification("Account created successfully, please wait till redirected to dashboard!", "success");
           return user;
         } catch (error) {
           handleFirebaseError(error);
@@ -2149,7 +2155,7 @@
             email,
             password
           );
-          showNotification("Login successful!", "success");
+          showNotification("Login successful , please wait till redirected to dashboard!!", "success");
           return userCredential.user;
         } catch (error) {
           handleFirebaseError(error);
@@ -3848,9 +3854,10 @@
 
       // Modal functions
       function showProfile() {
+        const modal = document.getElementById("profileModal");
+        if (!modal) return;
         if (!window.currentUser) return;
 
-        const modal = document.getElementById("profileModal");
         const avatar = document.getElementById("profileAvatar");
         const firstName = document.getElementById("profileFirstName");
         const lastName = document.getElementById("profileLastName");
@@ -3859,49 +3866,60 @@
         const department = document.getElementById("profileDepartment");
 
         // Populate form with current user data
-        avatar.textContent =
-          window.currentUser.firstName.charAt(0) +
-          window.currentUser.lastName.charAt(0);
-        firstName.value = window.currentUser.firstName || "";
-        lastName.value = window.currentUser.lastName || "";
-        email.value = window.currentUser.email || "";
-        employeeId.value = window.currentUser.employeeId || "";
-        department.value = window.currentUser.department || "";
+        if (avatar && window.currentUser.firstName && window.currentUser.lastName) {
+          avatar.textContent =
+            window.currentUser.firstName.charAt(0) +
+            window.currentUser.lastName.charAt(0);
+        }
+        if (firstName) firstName.value = window.currentUser.firstName || "";
+        if (lastName) lastName.value = window.currentUser.lastName || "";
+        if (email) email.value = window.currentUser.email || "";
+        if (employeeId) employeeId.value = window.currentUser.employeeId || "";
+        if (department) department.value = window.currentUser.department || "";
 
-        modal.classList.remove("hidden");
+        
+        modal.style.display='flex'
 
         closeAllMenus();
       }
 
       function closeProfile() {
-        document.getElementById("profileModal").classList.add("hidden");
+        const modal = document.getElementById("profileModal");
+        if (modal) modal.style.display='none';
       }
 
       function showSettings() {
-        document.getElementById("settingsModal").classList.remove("hidden");
+        const modal = document.getElementById("settingsModal");
+        if (modal) modal.style.display='flex';
         closeAllMenus();
       }
 
       function closeSettings() {
-        document.getElementById("settingsModal").classList.add("hidden");
+        const modal = document.getElementById("settingsModal");
+        if (modal) modal.style.display='none';
       }
 
       function showAddIntern() {
-        document.getElementById("addInternModal").classList.remove("hidden");
+        const modal = document.getElementById("addInternModal");
+        if (modal) modal.style.display='flex';
       }
 
       function closeAddIntern() {
-        document.getElementById("addInternModal").classList.add("hidden");
-        document.getElementById("addInternForm").reset();
+        const modal = document.getElementById("addInternModal");
+        if (modal) modal.style.display='none';
+        const form = document.getElementById("addInternForm");
+        if (form) form.reset();
       }
 
       function showReports() {
         loadReportsData();
-        document.getElementById("reportsModal").classList.remove("hidden");
+        const modal = document.getElementById("reportsModal");
+        if (modal) modal.style.display='flex';
       }
 
       function closeReports() {
-        document.getElementById("reportsModal").classList.add("hidden");
+        const modal = document.getElementById("reportsModal");
+        if (modal) modal.style.display='none';
       }
 
       function showProfileCompletion(userData) {
